@@ -3,17 +3,27 @@ import { ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { AppLoggerModule } from './common/logging/logger.module';
+// Config first: it loads `.env` at import time and later imports read process.env.
 import { AppConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { AppLoggerModule } from './common/logging/logger.module';
 import { DatabaseModule } from './database/database.module';
+import { JobsModule } from './jobs/jobs.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { EmailModule } from './modules/notifications/email/email.module';
 import { SystemModule } from './modules/system/system.module';
+import { UsersModule } from './modules/users/users.module';
 
 /**
  * HTTP application root. Cross-cutting infrastructure (config, logging, rate
- * limiting, database, error handling) lives here; business modules are added
- * under `modules/` in later phases and import only what they need.
+ * limiting, database, jobs, error handling, authentication) lives here;
+ * business modules are added under `modules/` and import only what they need.
+ *
+ * Global guard order: rate limit → authentication (routes are protected
+ * unless `@Public()`) → roles.
  */
 @Module({
   imports: [
@@ -32,10 +42,16 @@ import { SystemModule } from './modules/system/system.module';
       }),
     }),
     DatabaseModule,
+    JobsModule,
+    EmailModule,
     SystemModule,
+    UsersModule,
+    AuthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

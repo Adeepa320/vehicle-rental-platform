@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
+import { Geist } from 'next/font/google';
 import type { ReactNode } from 'react';
 
 import './globals.css';
-import { Geist } from 'next/font/google';
+import { SiteHeader } from '@/components/site-header';
+import { AuthProvider } from '@/lib/auth/auth-context';
 import { cn } from '@/lib/utils';
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
@@ -20,7 +22,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning className={cn('font-sans', geist.variable)}>
       <body className="bg-background text-foreground min-h-screen font-sans antialiased">
-        {children}
+        <AuthProvider>
+          <SiteHeader />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

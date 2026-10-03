@@ -1,18 +1,38 @@
+import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 
-/** Values every e2e test starts from; individual files override what they need. */
+/**
+ * Values every e2e test starts from; individual files override what they need.
+ * Set `TEST_LOG_LEVEL=error` (or `info`) to see API logs while debugging a test.
+ */
 export const TEST_ENV_DEFAULTS: Record<string, string> = {
   NODE_ENV: 'test',
-  LOG_LEVEL: 'silent',
+  LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'silent',
   CORS_ORIGINS: 'http://localhost:3000',
+  WEB_APP_URL: 'http://localhost:3000',
   RATE_LIMIT_TTL_SECONDS: '60',
   RATE_LIMIT_MAX: '1000',
+  AUTH_LOGIN_LIMIT_PER_MINUTE: '1000',
+  AUTH_SENSITIVE_LIMIT_PER_15MIN: '1000',
+  AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN: '3',
+  // Faster Argon2 for tests only; production defaults stay at 64 MiB / 3 iterations.
+  ARGON2_MEMORY_KIB: '16384',
+  ARGON2_TIME_COST: '2',
+  EMAIL_PROVIDER: 'memory',
+  PGBOSS_SCHEMA: 'pgboss_test',
+  OPENAPI_ENABLED: 'true',
 };
 
 /** Connection URL of the dedicated test database, if configured. */
 export function testDatabaseUrl(): string | undefined {
   return process.env.DATABASE_URL_TEST;
+}
+
+export interface CreateTestAppOptions {
+  env?: Record<string, string>;
+  /** Extra controllers registered on the root testing module (e.g. role-guard fixtures). */
+  controllers?: Type[];
 }
 
 /**
@@ -24,19 +44,27 @@ export function testDatabaseUrl(): string | undefined {
  * put scenarios that need different env values in separate files.
  */
 export async function createTestApp(
-  env: Record<string, string> = {},
+  envOrOptions: Record<string, string> | CreateTestAppOptions = {},
 ): Promise<NestExpressApplication> {
+  const options: CreateTestAppOptions =
+    'env' in envOrOptions || 'controllers' in envOrOptions
+      ? (envOrOptions as CreateTestAppOptions)
+      : { env: envOrOptions as Record<string, string> };
+
   Object.assign(process.env, TEST_ENV_DEFAULTS, {
     // The pool connects lazily, so tests that never touch the database can use a dummy URL.
     DATABASE_URL: testDatabaseUrl() ?? 'postgresql://postgres:postgres@127.0.0.1:1/unused',
-    ...env,
+    ...options.env,
   });
 
   // `.js` extensions are required by NodeNext resolution; Vitest maps them to the `.ts` sources.
   const { AppModule } = await import('../../src/app.module.js');
   const { configureApp } = await import('../../src/app.setup.js');
 
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+    controllers: options.controllers ?? [],
+  }).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
   configureApp(app);
   await app.init();

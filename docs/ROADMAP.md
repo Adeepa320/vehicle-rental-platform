@@ -60,7 +60,11 @@ Total to launch (end of Phase 10): roughly **25 weeks** of build; parallelism an
 
 ## Phase 2 — Authentication, users, notification infrastructure
 
-**Goal:** Users can register, verify contacts, log in and manage profiles; the system can send email and SMS.
+> **Scope change (approved 2026-10-03).** The validation-stage Phase 2 is a lean "secure authentication and user foundation, local-only": e-mail + password registration, e-mail verification by link, login, access/refresh tokens with rotation and reuse detection, logout / logout-all, password reset, `/users/me`, the authorization foundation (guards, roles) and the minimum transactional e-mail delivery (Mailpit locally). **Deferred from the original list below:** phone/SMS OTP and any SMS provider; `customer_driver_details` and all identity documents (collected only when the self-drive booking flow needs them); file uploads and avatars; the in-app notification feed, `notifications`/`notification_deliveries`, `auth_identities`, `file_objects`; admin MFA (no admin login exists yet); Google sign-in. See TECH_DECISIONS D23–D29 and the Phase 2 handover.
+>
+> **Status (2026-10-03): implemented locally, pending review.** Tables `users`, `refresh_tokens`, `one_time_tokens` (migrations 0003–0004); pg-boss transactional enqueue serves as the outbox; OpenAPI is live at `/api/docs`.
+
+**Goal (original):** Users can register, verify contacts, log in and manage profiles; the system can send email and SMS.
 **Features:** register (email/password, phone), OTP request/verify (SMS + email), login, refresh rotation, logout(-all), password reset, profile edit, saved driver details (encrypted, opt-in), delete-account request; notification feed skeleton.
 **Database:** `users`, `refresh_tokens`, `otp_codes`, `auth_identities` (empty), `customer_driver_details`, `notifications`, `notification_deliveries`, `file_objects` (for avatars), `domain_events` outbox.
 **Backend:** auth module (Argon2id, JWT ES256, refresh families, reuse detection), OTP service with rate limits and HMAC storage, encryption helper (AES-256-GCM, key ids), notifications module (templates, channel adapters: Resend, Notify.lk/Text.lk, in-app), outbox dispatcher job, uploads presign (avatar).

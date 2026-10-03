@@ -43,7 +43,18 @@ Principles: least privilege, least data, defence in depth, secure defaults, audi
 - **Mobile (future):** refresh token in platform secure storage; sent in the request body to `/auth/refresh`.
 - `logout-all` revokes every session; password change and suspension do the same.
 
+**As implemented in Phase 2 (2026-10-03):**
+
+- Access tokens: EdDSA (Ed25519) via `jose`, 15 minutes, claims `sub`, `roles`, `sid` (refresh family), `iat`, `exp`, `iss`, `aud`, `jti`. Keys come from `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (required in production); development and tests generate an ephemeral pair per process. `kid` rotation is a later addition.
+- The auth guard loads the user row on every request (one primary-key lookup) and rejects tokens when the account is suspended/deleted or when `iat` precedes `users.sessions_revoked_at`. Logout-all, password reset and suspension therefore invalidate outstanding access tokens immediately, not after 15 minutes. Roles are taken from the row, not the token.
+- Refresh tokens: 32 random bytes (base64url), SHA-256 at rest, 30 days (8 hours for admin roles), one family per login. Rotation claims the old row atomically (`revoked_at IS NULL → now()`), so concurrent use of one token cannot double-issue; any presentation of a revoked/rotated token revokes the whole family.
+- Web cookie: `vrp_refresh`, `HttpOnly`, `SameSite=Lax`, `Secure` in production (configurable), path `/api/v1/auth` so it never accompanies other API calls; cleared on logout and on failed refresh.
+- **CSRF strategy:** the only cookie-authenticated endpoints are `refresh`, `logout` and `logout-all`. They are protected by (1) `SameSite=Lax`, which withholds the cookie from cross-site POSTs; (2) an `OriginGuard` that rejects any request whose `Origin` (or `Referer`) is not one of `CORS_ORIGINS`; (3) CORS with credentials enabled only for those origins. The design's `X-Requested-With` requirement was dropped as redundant with (2). Access tokens are bearer headers held in memory, which CSRF cannot use.
+- Mobile clients receive the refresh token in the response body and send it back in the body; no cookie is set.
+
 ### 2.3 OTP security
+
+**Phase 2 note:** phone/SMS OTP is deferred (no SMS provider is configured). E-mail verification and password reset use **link tokens** instead of codes: 256-bit random, SHA-256 at rest in `one_time_tokens`, single use (consumed atomically), 24-hour (verification) / 30-minute (reset) expiry, at most 3 issued per account and purpose per 15 minutes (excess requests return `202` and do nothing), plus per-IP throttles. Requesting a new token supersedes the previous one. Raw tokens exist only inside the e-mail; they are never logged (e-mail payloads are not logged, addresses are masked).
 
 - 6 digits from a CSPRNG; stored as HMAC-SHA256 with a server key; never logged.
 - TTL 10 minutes; single use; max 5 verification attempts per code; then invalidate.
@@ -57,6 +68,8 @@ Principles: least privilege, least data, defence in depth, secure defaults, audi
 - Never logged, never emailed. Reset via single-use, 30-minute, hashed token.
 - Password change requires current password (or recent OTP) and invalidates other sessions.
 - No password hints, no security questions.
+
+**As implemented in Phase 2:** Argon2id with `memoryCost` 64 MiB, `timeCost` 3, `parallelism` 1 (`ARGON2_*` env; tests lower it). Policy: 10–128 characters, not a listed common password, not a single repeated character, not containing the e-mail local part or the user's name. The breached-password (k-anonymity) and zxcvbn checks remain Phase 10 items. Unknown e-mail and wrong password both return `401 INVALID_CREDENTIALS` after an equal-cost Argon2 verification (timing equalisation). Brute force is limited per IP (10 login attempts/min by default); a per-account lockout was deliberately **not** added because it hands attackers a denial-of-service lever against victims; revisit with risk-based signals in Phase 10. Password reset also marks the e-mail as verified (it proves ownership) and e-mails a "password changed" notice.
 
 ---
 

@@ -2,9 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
 allowBuilds:
+  argon2: true
   '@swc/core': true
   esbuild: true
   unrs-resolver: true
+  '@scarf/scarf': false
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.11.7'
   - '@turbo/darwin-arm64@2.11.7'
@@ -17,3 +19,4 @@ minimumReleaseAgeExclude:
   - pino@10.4.0
   - supertest@7.3.1
   - turbo@2.11.7
+  - nodemailer@10.0.14

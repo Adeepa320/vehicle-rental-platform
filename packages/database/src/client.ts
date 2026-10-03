@@ -5,6 +5,12 @@ import * as schema from './schema';
 
 export type Database = PostgresJsDatabase<typeof schema>;
 
+/** The transaction object passed to `db.transaction(async (tx) => ...)`. */
+export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/** Anything a repository method can run queries on: the root database or an open transaction. */
+export type DatabaseExecutor = Database | Transaction;
+
 export interface DatabaseHandle {
   /** Drizzle query builder bound to the full schema. */
   db: Database;

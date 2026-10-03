@@ -21,6 +21,13 @@ export const geographyPoint = customType<{ data: GeoPoint; driverData: string }>
   },
 });
 
+/** Case-insensitive text (the `citext` extension); used for e-mail addresses. */
+export const citext = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'citext';
+  },
+});
+
 /** Standard audit columns. `updated_at` is maintained by the `set_updated_at` trigger. */
 export const auditColumns = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

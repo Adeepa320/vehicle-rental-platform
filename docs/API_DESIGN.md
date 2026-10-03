@@ -74,7 +74,27 @@ Common codes: `VALIDATION_ERROR` (400), `UNAUTHENTICATED` (401), `FORBIDDEN` (40
 
 ## 3. Auth
 
-### 3.1 `POST /auth/register`
+### 3.0 As implemented in Phase 2 (2026-10-03)
+
+The lean Phase 2 implements e-mail + password accounts only. Differences from the original design below are deliberate and documented in TECH_DECISIONS D23–D29:
+
+| Endpoint                                          | Status   | Notes                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /auth/register`                             | ✓        | Body `{ fullName, email, password, acceptTerms: true, preferredLanguage?, countryCode? }` (no phone). Server stamps `terms_version`. `201 { user, verification: { emailSent } }`. `409 EMAIL_ALREADY_REGISTERED`. Roles cannot be supplied.                                                                                                                            |
+| `POST /auth/email/verify`                         | ✓        | `{ token }` from the e-mailed link (`WEB_APP_URL/verify-email?token=…`), 24 h, single use. `200 { verified: true, email }`; `400 TOKEN_INVALID` / `TOKEN_EXPIRED`.                                                                                                                                                                                                     |
+| `POST /auth/email/resend-verification`            | ✓        | `{ email }` → always `202 { message }`; max 3 tokens per account per 15 min (silently dropped beyond).                                                                                                                                                                                                                                                                 |
+| `POST /auth/login`                                | ✓        | `{ email, password, client?: 'web' \| 'mobile' }`. `200 { tokenType: 'Bearer', accessToken, expiresIn, user, refreshToken? }`; web gets the refresh token as the `vrp_refresh` HttpOnly cookie (path `/api/v1/auth`), mobile in the body. `401 INVALID_CREDENTIALS`, `403 EMAIL_NOT_VERIFIED`, `403 ACCOUNT_SUSPENDED`. Login is blocked until the e-mail is verified. |
+| `POST /auth/refresh`                              | ✓        | Cookie or `{ refreshToken }`. Rotates within the family; reuse revokes the family. Origin/Referer must be an allowed web origin (CSRF). `401 REFRESH_INVALID` clears the cookie.                                                                                                                                                                                       |
+| `POST /auth/logout`                               | ✓        | Revokes the presented refresh token, clears the cookie, `204`. Public (works with an expired access token).                                                                                                                                                                                                                                                            |
+| `POST /auth/logout-all`                           | ✓        | Bearer required. Revokes all refresh tokens and sets `users.sessions_revoked_at`, which invalidates outstanding access tokens immediately. `204`.                                                                                                                                                                                                                      |
+| `POST /auth/password/forgot`                      | ✓        | `{ email }` → always `202 { message }`; 30-minute single-use link `WEB_APP_URL/reset-password?token=…`.                                                                                                                                                                                                                                                                |
+| `POST /auth/password/reset`                       | ✓        | `{ token, newPassword }` → `200 { message }`; revokes every session, marks the e-mail verified, sends a "password changed" notice.                                                                                                                                                                                                                                     |
+| `POST /auth/otp/request`, `POST /auth/otp/verify` | deferred | Phone/SMS OTP arrives with the SMS phase; the e-mail link flow covers verification until then.                                                                                                                                                                                                                                                                         |
+| `GET /auth/oauth/google`                          | later    | Unchanged.                                                                                                                                                                                                                                                                                                                                                             |
+
+Rate limits (per IP, defaults): login 10/min; register, forgot, resend 5/15 min; verify/reset 20/15 min; refresh/logout 60/min; plus the global limit. OpenAPI for all of the above: `GET /api/docs-json`, UI at `/api/docs` (non-production).
+
+### 3.1 `POST /auth/register` (original design)
 
 Create an account with email+password, or phone-first (password optional, OTP login).
 
@@ -152,11 +172,15 @@ Revoke current refresh token / all tokens of the user. `204`.
 
 Returns the profile, roles, verification flags, `providerId` if any, `hasDriverDetails`, notification unread count.
 
+_Phase 2 implementation:_ returns the `User` contract (`id, email, emailVerified, fullName, phone, roles, status, preferredLanguage, preferredCurrency, countryCode, createdAt`). `providerId`, `hasDriverDetails` and the unread count arrive with their phases.
+
 ### `PATCH /users/me`
 
 Body: `fullName`, `preferredLanguage`, `preferredCurrency`, `countryCode`, `avatarFileId`. Email/phone changes go through dedicated OTP flows.
 
-### `PUT /users/me/driver-details`
+_Phase 2 implementation:_ `fullName`, `phone` (unverified, nullable), `preferredLanguage`, `preferredCurrency`, `countryCode`. Unknown keys such as `roles` or `status` are rejected with `400 VALIDATION_ERROR`. `avatarFileId` waits for file storage.
+
+### `PUT /users/me/driver-details` (deferred to the booking phase; no identity data is collected before then)
 
 - **Body:** `{ "licenceNumber": "B1234567", "licenceCountry": "LK", "licenceExpiresOn": "2029-04-30", "licenceClass": "B", "idpNumber": null, "idDocType": "nic", "idDocNumber": "199012345678", "dateOfBirth": "1990-05-01", "licenceFileId": null, "consent": true }`
 - Stored encrypted; `consent` must be true. Response returns **masked** values only (`"licenceNumber": "B12•••67"`).

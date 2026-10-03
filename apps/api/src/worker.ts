@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 
 import { JobsService } from './jobs/jobs.service';
+import { EmailService } from './modules/notifications/email/email.service';
+import { registerEmailJobs } from './modules/notifications/email/email.worker';
 import { WorkerModule } from './worker.module';
 
 /**
@@ -19,10 +21,9 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   const jobs = app.get(JobsService);
-  await jobs.start();
-  logger.log(
-    `Worker ready; registered job handlers: ${jobs.registeredJobNames.length} (none expected in Phase 1)`,
-  );
+  await jobs.start('worker');
+  await registerEmailJobs(jobs, app.get(EmailService));
+  logger.log(`Worker ready; registered job handlers: ${jobs.registeredJobNames.join(', ')}`);
 }
 
 bootstrap().catch((error: unknown) => {

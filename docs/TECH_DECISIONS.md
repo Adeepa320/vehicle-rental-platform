@@ -26,6 +26,13 @@
 | D20 | Phase 1 local-only infrastructure (no paid services, no Mailpit/MinIO yet)                             |
 | D21 | shadcn/ui v4 default preset (Base UI) and self-hosted Geist font                                       |
 | D22 | drizzle-kit PostGIS quoting workaround and migration advisory lock                                     |
+| D23 | Lean Phase 2 scope: defer SMS OTP, identity documents, uploads and the notification feed               |
+| D24 | pg-boss transactional enqueue is the outbox (no separate domain_events table)                          |
+| D25 | E-mail link tokens (one_time_tokens) instead of OTP codes for verification and reset                   |
+| D26 | jose EdDSA access tokens with ephemeral development keys; per-request user load for revocation         |
+| D27 | Refresh cookie design and CSRF strategy (SameSite=Lax + Origin guard)                                  |
+| D28 | OpenAPI via @nestjs/swagger fed by Zod JSON Schema export (resolves D18)                               |
+| D29 | SMTP adapter + Mailpit for e-mail; nodemailer, argon2, cookie-parser added                             |
 
 ---
 
@@ -189,6 +196,46 @@
 **Context.** drizzle-kit 0.31 quotes any column type not in its native list; `geography` is absent (only `geometry`), so generated SQL contains `"geography(Point,4326)"`, which PostgreSQL rejects.
 **Decision.** Keep `geography` (metre-based `ST_DWithin` with the GiST index, as designed) and hand-unquote the type in generated migrations; `packages/database/src/__tests__/migrations.test.ts` fails if a quoted PostGIS type is committed, and README.md documents the workflow. `runMigrations` takes a session advisory lock so concurrent runners (several instances, parallel test suites) serialise safely. Writes go through `ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography`; reads parse EWKB in the custom column type.
 **Revisit.** If drizzle-kit adds `geography` to its native list, or if the project ever needs `geometry`-based operations (then use the built-in `geometry()` column with a functional geography index).
+
+---
+
+## Phase 2 implementation decisions (2026-10-03)
+
+### D23 — Lean Phase 2 scope
+
+**Context.** The approved roadmap's Phase 2 bundled SMS OTP, driver details, avatars, the notification feed and several tables. The user narrowed it (2026-10-03) to a local-only authentication/user foundation under the LKR 100,000 validation budget.
+**Decision.** Build e-mail + password accounts, e-mail verification, sessions, password reset, profile and the authorization foundation. Defer: SMS OTP and any SMS provider (an `SmsProvider` adapter is documented in `.env.example` only); `customer_driver_details` and every identity document (collected first when the self-drive booking flow requires them); file uploads/avatars; `notifications` feed; `auth_identities`; admin MFA (no admin login yet).
+**Consequences.** ROADMAP, API_DESIGN and DATABASE_DESIGN carry "as implemented / deferred" notes rather than rewritten requirements. Phone remains an optional unverified profile field.
+
+### D24 — pg-boss transactional enqueue as the outbox
+
+**Context.** ARCHITECTURE §5.1 specifies a transactional outbox (`domain_events` row written with the business change, dispatched by the worker). pg-boss 12 ships a Drizzle adapter (`fromDrizzle(tx, sql)`) that inserts the job row inside the caller's transaction.
+**Options.** (a) Separate `outbox_events` table + sweeper job; (b) pg-boss `send(..., { db: fromDrizzle(tx, sql) })`.
+**Decision.** (b). The job table _is_ the outbox: a user row, its verification token and the `email.send` job commit or roll back together; retries/backoff/expiry come from pg-boss queue options (`apps/api/src/jobs/queues.ts`). The API starts pg-boss lazily on first send with supervision disabled; the worker supervises and runs handlers.
+**Consequences.** No extra table or sweeper. Later domain events (booking notifications) use the same path; a dedicated event table can still be added if fan-out to several consumers is needed.
+
+### D25 — E-mail link tokens instead of OTP codes
+
+**Decision.** Verification and reset use 256-bit random tokens in links (`one_time_tokens`, SHA-256 at rest, single use, 24 h / 30 min, 3 per account per 15 min). Six-digit codes make sense for SMS, not e-mail; links also avoid attempt-counting logic. The table gains a `channel` column when SMS arrives, fulfilling the design's `otp_codes` role.
+
+### D26 — Access tokens with `jose` (EdDSA) and per-request user load
+
+**Options.** `@nestjs/jwt` (jsonwebtoken, HS/RS), `jose` (modern, zero deps, Web Crypto, EdDSA).
+**Decision.** `jose` with Ed25519. Keys from env in production (`pnpm --filter @vrp/api keys:generate` prints them); ephemeral per-process keys in development/test with a startup warning. The guard loads the user row on every request so suspension, deletion and `sessions_revoked_at` apply instantly; this costs one indexed lookup per request, acceptable at MVP scale and far simpler than a token denylist. `kid`-based rotation is a later addition.
+
+### D27 — Refresh cookie and CSRF
+
+**Decision.** Cookie `vrp_refresh`: HttpOnly, SameSite=Lax, Secure in production, path `/api/v1/auth`. CSRF for the three cookie-authenticated routes is handled by SameSite=Lax plus an `OriginGuard` (Origin/Referer must be in `CORS_ORIGINS`) plus credentialed CORS only for those origins. The design's extra `X-Requested-With` header was dropped as redundant. Mobile clients use the body instead of the cookie. Documented in SECURITY_AND_PRIVACY §2.2.
+
+### D28 — OpenAPI (resolves D18)
+
+**Context.** `nestjs-zod` still lacks Nest 12 support; Zod 4.6 exports JSON Schema with an `openapi-3.0` target.
+**Decision.** `@nestjs/swagger` 12 with two tiny decorators (`ApiZodBody`, `ApiZodResponse` in `apps/api/src/openapi/zod-openapi.ts`) that convert the contract schemas. Document at `/api/docs-json`, UI at `/api/docs`, enabled outside production (`OPENAPI_ENABLED`). No class-validator/class-transformer; an e2e test checks the document.
+**Consequences.** One dependency (`@nestjs/swagger` + `swagger-ui-dist`). Request bodies are documented from the same schema that validates them.
+
+### D29 — E-mail delivery and new dependencies
+
+**Decision.** `EmailProvider` interface with `SmtpEmailProvider` (`nodemailer`, Mailpit locally at `localhost:1025`, UI `:8025`) and `MemoryEmailProvider` (tests). Production can use any SMTP endpoint (including a provider's SMTP) or add an HTTP provider class without touching callers. Dependencies added this phase: `argon2` (Argon2id, native prebuilds, build script allow-listed), `jose`, `nodemailer`, `cookie-parser`, `@nestjs/swagger`, `drizzle-orm` (now a direct API dependency for query operators); `@scarf/scarf` telemetry build script explicitly denied.
 
 ---
 

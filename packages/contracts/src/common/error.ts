@@ -5,6 +5,7 @@ import { z } from 'zod';
  * QUOTE_CHANGED, ...) are added in the phases that introduce them.
  */
 export const ApiErrorCodeSchema = z.enum([
+  // generic (mapped from HTTP status)
   'VALIDATION_ERROR',
   'UNAUTHENTICATED',
   'FORBIDDEN',
@@ -15,6 +16,14 @@ export const ApiErrorCodeSchema = z.enum([
   'RATE_LIMITED',
   'SERVICE_UNAVAILABLE',
   'INTERNAL',
+  // authentication & accounts
+  'INVALID_CREDENTIALS',
+  'EMAIL_NOT_VERIFIED',
+  'EMAIL_ALREADY_REGISTERED',
+  'ACCOUNT_SUSPENDED',
+  'TOKEN_INVALID',
+  'TOKEN_EXPIRED',
+  'REFRESH_INVALID',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

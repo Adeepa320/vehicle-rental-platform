@@ -22,6 +22,20 @@
       "when": 1790970297109,
       "tag": "0002_updated_at_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791038766210,
+      "tag": "0003_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791038768077,
+      "tag": "0004_users_updated_at_trigger",
+      "breakpoints": true
     }
   ]
 }

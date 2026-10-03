@@ -65,6 +65,8 @@ The approved product, architecture and roadmap live in `docs/`. They are the sou
 - Write or update tests alongside the change (unit for services/pricing/state machine; integration for repository/transaction code; e2e for critical flows).
 - Database changes: edit `packages/database/src/schema`, run `pnpm db:generate`, then **review the generated SQL** — drizzle-kit quotes PostGIS types (`"geography(Point,4326)"`), which must be unquoted by hand. Extensions, triggers and exclusion constraints go in custom migrations (`drizzle-kit generate --custom`). Never edit an already-applied migration.
 - Use `pnpm` (never npm/yarn); new post-install build scripts must be allow-listed in `pnpm-workspace.yaml` (`allowBuilds`).
+- API routes are protected by default (global `JwtAuthGuard`); opt out only with `@Public()` and a reason. Use `@Roles()` for role checks and `@CurrentUser()` for the caller. Validate bodies with `@Body(new ZodValidationPipe(Schema))` and document them with `ApiZodBody` / `ApiZodResponse` using schemas from `@vrp/contracts`.
+- Never log passwords, tokens, cookies or e-mail bodies; mask e-mail addresses in logs (`maskEmail`). Jobs that must follow a database write are enqueued inside the same transaction (`EmailService.enqueue(message, tx)`).
 - Local workflow and commands are documented in `README.md`; keep it current.
 
 ## 7. Verification is mandatory
