@@ -28,3 +28,20 @@ export function vehicleLabel(row: Pick<Vehicle, 'title' | 'make' | 'model' | 'mo
   const parts = [row.make, row.model, row.modelYear].filter(Boolean);
   return parts.length > 0 ? parts.join(' ') : 'your vehicle';
 }
+
+/** Public slug: `toyota-aqua-2018-mirissa-ab12` (make, model, year, town, random suffix). */
+export function makeVehicleSlug(
+  vehicle: Pick<Vehicle, 'make' | 'model' | 'modelYear'>,
+  placeSlug: string | null,
+): string {
+  const base = [vehicle.make, vehicle.model, vehicle.modelYear, placeSlug]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  const suffix = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+  return `${base || 'vehicle'}-${suffix}`;
+}

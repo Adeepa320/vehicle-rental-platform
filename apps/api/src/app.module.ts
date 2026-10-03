@@ -15,11 +15,13 @@ import { AvailabilityModule } from './modules/availability/availability.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
+import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { EmailModule } from './modules/notifications/email/email.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { ReferenceModule } from './modules/reference/reference.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { SystemModule } from './modules/system/system.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -51,6 +53,7 @@ import { UsersModule } from './modules/users/users.module';
     JobsModule,
     AuditModule,
     EmailModule,
+    StorageModule,
     SystemModule,
     ReferenceModule,
     UsersModule,
@@ -58,6 +61,7 @@ import { UsersModule } from './modules/users/users.module';
     ProvidersModule,
     CatalogueModule,
     AvailabilityModule,
+    DiscoveryModule,
     AdminModule,
   ],
   providers: [

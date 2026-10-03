@@ -1,11 +1,14 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { AdminVehicle, ProviderLocation, Vehicle } from '@vrp/contracts';
+import sharp from 'sharp';
 import request, { type Response } from 'supertest';
 
 import {
   adminAction,
+  completeApplication,
   newVerifiedUser,
-  submitCompleteApplication,
+  saveDraft,
+  submitApplication,
   type ApplicantSession,
   type ReferenceIds,
 } from './provider-helpers';
@@ -25,12 +28,8 @@ export async function approvedProvider(
   displayName = 'Sunil Rentals Mirissa',
 ): Promise<ProviderSession> {
   const user = await newVerifiedUser(app, email);
-  await request(app.getHttpServer())
-    .put('/api/v1/providers/me/application')
-    .set(auth(user.body.accessToken))
-    .send({ displayName })
-    .expect(200);
-  const application = await submitCompleteApplication(app, user.body.accessToken, refs);
+  await saveDraft(app, user.body.accessToken, { ...completeApplication(refs), displayName });
+  const application = (await submitApplication(app, user.body.accessToken)).body as { id: string };
   await adminAction(app, admin.body.accessToken, application.id, 'approve');
   const profile = await request(app.getHttpServer())
     .get('/api/v1/providers/me')
@@ -176,6 +175,7 @@ export async function submitCompleteVehicle(
   overrides: Record<string, unknown> = {},
 ): Promise<Vehicle> {
   const created = await createVehicle(app, token, completeVehicle(locationId, overrides));
+  await uploadTestPhotos(app, token, created.body.id as string, 3);
   const submitted = await vehicleAction(app, token, created.body.id as string, 'submit');
   return submitted.body as Vehicle;
 }
@@ -222,3 +222,49 @@ export function colomboMidnight(daysFromNow: number): string {
 }
 
 export type { AdminVehicle };
+
+export interface TestImageOptions {
+  width?: number;
+  height?: number;
+  format?: 'jpeg' | 'png' | 'webp';
+  /** EXIF orientation tag (JPEG only), e.g. 6 = rotate 90° clockwise. */
+  orientation?: number;
+}
+
+/** Generates a real image in memory (no fixtures on disk). */
+export async function testImage(options: TestImageOptions = {}): Promise<Buffer> {
+  const { width = 800, height = 600, format = 'jpeg', orientation } = options;
+  let image = sharp({
+    create: { width, height, channels: 3, background: { r: 200, g: 120, b: 40 } },
+  });
+  if (orientation) image = image.withMetadata({ orientation });
+  return image.toFormat(format).toBuffer();
+}
+
+export async function uploadPhoto(
+  app: NestExpressApplication,
+  token: string,
+  vehicleId: string,
+  buffer: Buffer,
+  expected = 201,
+  filename = 'photo.jpg',
+  contentType = 'image/jpeg',
+): Promise<Response> {
+  return request(app.getHttpServer())
+    .post(`/api/v1/providers/me/vehicles/${vehicleId}/photos`)
+    .set(auth(token))
+    .attach('file', buffer, { filename, contentType })
+    .expect(expected);
+}
+
+/** Uploads n distinct valid photos (the minimum for submission is 3). */
+export async function uploadTestPhotos(
+  app: NestExpressApplication,
+  token: string,
+  vehicleId: string,
+  count: number,
+): Promise<void> {
+  for (let i = 0; i < count; i += 1) {
+    await uploadPhoto(app, token, vehicleId, await testImage({ width: 800 + i, height: 600 }));
+  }
+}

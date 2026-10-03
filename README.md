@@ -18,7 +18,7 @@ packages/
   eslint-config/      Shared ESLint flat configs (base, nest, next)
   typescript-config/  Shared strict tsconfig bases
 infra/
-  docker-compose.yml  Local PostgreSQL 17 + PostGIS 3.5 and Mailpit (e-mail catcher)
+  docker-compose.yml  Local PostgreSQL 17 + PostGIS 3.5, Mailpit (e-mail catcher) and MinIO (S3-compatible photo storage, dev only)
 docs/         Product and technical documentation (source of truth)
 ```
 
@@ -42,7 +42,7 @@ pnpm install
 cp .env.example .env
 cp apps/web/.env.example apps/web/.env.local
 
-# 3. Start PostgreSQL + PostGIS and Mailpit, apply migrations and load the South Coast seed data
+# 3. Start PostgreSQL + PostGIS, Mailpit and MinIO, apply migrations and load the South Coast seed data
 pnpm db:setup          # = pnpm db:up && pnpm db:migrate && pnpm db:seed
 
 # 4. Run the web app (http://localhost:3000) and the API (http://localhost:4000/api/v1)
@@ -60,6 +60,7 @@ Then:
 - <http://localhost:3000> — status page; **Create account** → check the Mailpit inbox at <http://localhost:8025> → open the verification link → log in → **Account**.
 - **Become a provider** → `/provider/application` → save and submit → as an admin, review at `/admin/providers` → approve → the applicant sees `/provider/dashboard`. See "Provider onboarding flow" below.
 - **Provider inventory** → `/provider/locations` (pickup points) → `/provider/vehicles` (listings, pricing, submit for review) → as an admin, review at `/admin/vehicles` → approve → `/provider/vehicles/[id]/availability` (manual blocks). See "Vehicle inventory flow" below.
+- **Customer discovery** → `/` (search box) → `/search?placeId=…` (filters, sort, optional map) → `/vehicles/[slug]`. A listing appears publicly only when it is approved, has 3+ photos, and its provider and pickup location are active. See "Photos, search and public pages" below.
 - <http://localhost:4000/api/docs> — Swagger UI generated from the shared Zod contracts (`/api/docs-json` for the document).
 - `GET /api/v1/health` (liveness) and `GET /api/v1/ready` (readiness: database, PostGIS, migrations).
 
@@ -86,37 +87,43 @@ Without `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` the API generates an ephemeral signin
 
 Root `.env` (copied from [`.env.example`](.env.example)) is read by Docker Compose defaults, the database scripts, the API and the worker:
 
-| Variable                                                                                                    | Default                                                        | Used by                            |
-| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------- |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DB_PORT`                                           | `postgres` / `postgres` / `vehicle_rental` / `5432`            | Docker Compose                     |
-| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT`                                                                     | `1025` / `8025`                                                | Docker Compose                     |
-| `DATABASE_URL`                                                                                              | `postgresql://postgres:postgres@localhost:5432/vehicle_rental` | database scripts, API, worker      |
-| `DATABASE_URL_TEST`                                                                                         | `…/vehicle_rental_test`                                        | automated tests                    |
-| `NODE_ENV`                                                                                                  | `development`                                                  | API, worker                        |
-| `API_PORT` / `API_HOST`                                                                                     | `4000` / `0.0.0.0`                                             | API                                |
-| `CORS_ORIGINS`                                                                                              | `http://localhost:3000`                                        | API (CORS and CSRF origin check)   |
-| `WEB_APP_URL`                                                                                               | `http://localhost:3000`                                        | API (links in e-mails)             |
-| `LOG_LEVEL`                                                                                                 | `debug`                                                        | API, worker                        |
-| `RATE_LIMIT_TTL_SECONDS` / `RATE_LIMIT_MAX`                                                                 | `60` / `300`                                                   | API                                |
-| `AUTH_LOGIN_LIMIT_PER_MINUTE` / `AUTH_SENSITIVE_LIMIT_PER_15MIN` / `AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN` | `10` / `5` / `3`                                               | API                                |
-| `JWT_ISSUER` / `JWT_AUDIENCE`                                                                               | `vrp-api` / `vrp`                                              | API                                |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                                                                        | _(unset → ephemeral pair; required in production)_             | API                                |
-| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS`                                                       | `900` / `30`                                                   | API                                |
-| `COOKIE_SECURE` / `COOKIE_DOMAIN`                                                                           | _(secure in production)_ / _(unset)_                           | API                                |
-| `EMAIL_VERIFICATION_TTL_HOURS` / `PASSWORD_RESET_TTL_MINUTES`                                               | `24` / `30`                                                    | API                                |
-| `ARGON2_MEMORY_KIB` / `ARGON2_TIME_COST`                                                                    | `65536` / `3`                                                  | API                                |
-| `EMAIL_PROVIDER`                                                                                            | `smtp` (`memory` for tests)                                    | API, worker                        |
-| `EMAIL_FROM` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`                        | Mailpit defaults                                               | worker                             |
-| `OPENAPI_ENABLED`                                                                                           | `true` outside production                                      | API                                |
-| `PGBOSS_SCHEMA`                                                                                             | `pgboss`                                                       | API, worker                        |
-| `OPERATOR_NOTIFICATION_EMAIL`                                                                               | _(unset → no operator notice)_                                 | API (e-mail on application submit) |
+| Variable                                                                                                    | Default                                                           | Used by                            |
+| ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DB_PORT`                                           | `postgres` / `postgres` / `vehicle_rental` / `5432`               | Docker Compose                     |
+| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT`                                                                     | `1025` / `8025`                                                   | Docker Compose                     |
+| `MINIO_PORT` / `MINIO_CONSOLE_PORT` / `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`                             | `9000` / `9001` / `minioadmin` / `minioadmin`                     | Docker Compose (dev only)          |
+| `DATABASE_URL`                                                                                              | `postgresql://postgres:postgres@localhost:5432/vehicle_rental`    | database scripts, API, worker      |
+| `DATABASE_URL_TEST`                                                                                         | `…/vehicle_rental_test`                                           | automated tests                    |
+| `NODE_ENV`                                                                                                  | `development`                                                     | API, worker                        |
+| `API_PORT` / `API_HOST`                                                                                     | `4000` / `0.0.0.0`                                                | API                                |
+| `CORS_ORIGINS`                                                                                              | `http://localhost:3000`                                           | API (CORS and CSRF origin check)   |
+| `WEB_APP_URL`                                                                                               | `http://localhost:3000`                                           | API (links in e-mails)             |
+| `LOG_LEVEL`                                                                                                 | `debug`                                                           | API, worker                        |
+| `RATE_LIMIT_TTL_SECONDS` / `RATE_LIMIT_MAX`                                                                 | `60` / `300`                                                      | API                                |
+| `AUTH_LOGIN_LIMIT_PER_MINUTE` / `AUTH_SENSITIVE_LIMIT_PER_15MIN` / `AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN` | `10` / `5` / `3`                                                  | API                                |
+| `JWT_ISSUER` / `JWT_AUDIENCE`                                                                               | `vrp-api` / `vrp`                                                 | API                                |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                                                                        | _(unset → ephemeral pair; required in production)_                | API                                |
+| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS`                                                       | `900` / `30`                                                      | API                                |
+| `COOKIE_SECURE` / `COOKIE_DOMAIN`                                                                           | _(secure in production)_ / _(unset)_                              | API                                |
+| `EMAIL_VERIFICATION_TTL_HOURS` / `PASSWORD_RESET_TTL_MINUTES`                                               | `24` / `30`                                                       | API                                |
+| `ARGON2_MEMORY_KIB` / `ARGON2_TIME_COST`                                                                    | `65536` / `3`                                                     | API                                |
+| `EMAIL_PROVIDER`                                                                                            | `smtp` (`memory` for tests)                                       | API, worker                        |
+| `EMAIL_FROM` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`                        | Mailpit defaults                                                  | worker                             |
+| `OPENAPI_ENABLED`                                                                                           | `true` outside production                                         | API                                |
+| `PGBOSS_SCHEMA`                                                                                             | `pgboss`                                                          | API, worker                        |
+| `OPERATOR_NOTIFICATION_EMAIL`                                                                               | _(unset → no operator notice)_                                    | API (e-mail on application submit) |
+| `STORAGE_PROVIDER` / `STORAGE_ENDPOINT` / `STORAGE_REGION`                                                  | `s3` / `http://localhost:9000` / `us-east-1`                      | API (photos; `memory` in tests)    |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`                                                                 | `minioadmin` / `minioadmin` (refused in production)               | API                                |
+| `STORAGE_BUCKET_PRIVATE` / `STORAGE_BUCKET_PUBLIC` / `STORAGE_PUBLIC_URL`                                   | `vrp-private` / `vrp-public` / `http://localhost:9000/vrp-public` | API (variant URLs)                 |
+| `STORAGE_FORCE_PATH_STYLE` / `STORAGE_AUTO_CREATE_BUCKETS`                                                  | `true` / `true` outside production                                | API                                |
 
 `apps/web/.env.local` (copied from [`apps/web/.env.example`](apps/web/.env.example)):
 
-| Variable              | Default                        | Used by          |
-| --------------------- | ------------------------------ | ---------------- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:4000/api/v1` | browser          |
-| `API_INTERNAL_URL`    | `http://localhost:4000/api/v1` | server rendering |
+| Variable                    | Default                                        | Used by                                |
+| --------------------------- | ---------------------------------------------- | -------------------------------------- |
+| `NEXT_PUBLIC_API_URL`       | `http://localhost:4000/api/v1`                 | browser                                |
+| `API_INTERNAL_URL`          | `http://localhost:4000/api/v1`                 | server rendering                       |
+| `NEXT_PUBLIC_MAP_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | browser (MapLibre style; free, no key) |
 
 Placeholders for later phases (SMS, storage, payments, field encryption, error tracking) are listed as comments in `.env.example` and are not read by any code yet.
 
@@ -154,6 +161,18 @@ Phase 4 is lean too: no paid map API (district + town from the gazetteer, option
 
 Money never uses floats: amounts are decimal strings in the API (`"7500.00"`) and `numeric(12,2)` in PostgreSQL. Registration numbers are stored upper-cased and shown in full only to the provider and admins.
 
+## Photos, search and public pages (local)
+
+Phase 5 adds the customer side without any paid service: MinIO (local S3-compatible storage, development only), MapLibre with free OpenFreeMap tiles, and PostgreSQL/PostGIS search (TECH_DECISIONS D42–D47).
+
+1. **Photos.** On `/provider/vehicles/[id]` a provider uploads 3–12 photos (JPEG/PNG/WebP, ≤ 10 MB). The API checks the real format, strips EXIF/GPS metadata, stores the original in the private bucket `vrp-private` and three WebP variants in the public bucket `vrp-public` (MinIO console: <http://localhost:9001>). Listings cannot be submitted or approved with fewer than 3 photos; photos can be changed while the listing is a draft or has changes requested.
+2. **Approval assigns a public slug** (`toyota-aqua-2018-mirissa-ab12`).
+3. **Search.** `/` → `/search` calls `GET /vehicles/search`: only approved listings of active providers at active locations with 3+ photos; with dates, only vehicles with no overlapping `vehicle_holds` and whose min/max rental days fit. Place search uses the gazetteer centre and PostGIS radius; results carry a distance and an **estimated** total (listed rates only; not a booking quote).
+4. **Public listing page** `/vehicles/[slug]` is server-rendered with gallery, specs, pricing, rules, provider summary and an **approximate** map point (pin snapped to ~550 m or the town centre). Exact addresses, pickup instructions, plates and provider contact details are never public.
+5. Booking, payment and the quote engine do not exist yet; the page says so.
+
+Try it: approve a listing with photos, then open <http://localhost:3000/search> and the listing's public page.
+
 ## Database workflow
 
 1. Edit the Drizzle schema in `packages/database/src/schema/`.
@@ -180,6 +199,8 @@ Phase 3 e2e suites (`provider-application`, `admin-provider-review`, `admin-boot
 
 Phase 4 suites (`provider-locations`, `provider-vehicles`, `admin-vehicle-review`, `vehicle-availability`) build on the same helpers; the availability suite also fires two concurrent inserts at the `vehicle_holds` exclusion constraint to prove overlaps cannot both succeed.
 
+Phase 5 suites: `vehicle-photos` (real images generated with sharp, EXIF stripping, variants, limits, ownership — against the in-memory storage provider) and `public-search` (searchable condition, filters, PostGIS radius, holds, boundaries, pagination, sorting, slug detail, place suggest and a privacy scan of the raw JSON). The real MinIO path is exercised by the Phase 5 smoke test.
+
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs install → lint → build → typecheck → migrate + seed → test → format check against a PostGIS service container. It needs no secrets. Deployment is intentionally not configured yet (see `docs/ARCHITECTURE.md` §13 for the planned hosting).
@@ -191,5 +212,7 @@ Phase 4 suites (`provider-locations`, `provider-vehicles`, `admin-vehicle-review
 - **`/ready` reports `migrations: down`** — run `pnpm db:migrate`.
 - **No verification e-mail arrives** — the worker must be running (`pnpm dev:worker`); check Mailpit at <http://localhost:8025> and the worker log.
 - **`pnpm admin:grant` refuses** — the e-mail must belong to an existing, active user whose e-mail is verified (register and verify first). Running it again for the same user is safe.
+- **Photo upload fails with a storage error** — MinIO must be running (`pnpm db:up`; console at <http://localhost:9001>, `minioadmin` / `minioadmin`). The API logs "Object storage ready" at startup after creating the `vrp-private` and `vrp-public` buckets. Photos are not served if `STORAGE_PUBLIC_URL` does not match how the browser reaches MinIO.
+- **The map does not load** — results and listing pages work without it; check `NEXT_PUBLIC_MAP_STYLE_URL` (any MapLibre style JSON URL) and network access to the tile host.
 - **"JWT_PRIVATE_KEY … not set" warning** — expected locally; generate keys with `pnpm --filter @vrp/api keys:generate` for stable tokens across restarts.
 - **Test database missing** (older Docker volume) — `docker exec vehicle-rental-db psql -U postgres -c "CREATE DATABASE vehicle_rental_test;"`.

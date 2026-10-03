@@ -61,6 +61,8 @@ Timers (platform settings): provider response window (default 24 h, shorter when
 | 3   | Pick dates     | Date-time pickers default to tomorrow 09:00 → +3 days 09:00, `Asia/Colombo`. Min duration 1 day; validation against vehicle `min_rental_days` happens per result.       | Dates are mandatory: without dates the platform cannot promise availability, which is the core value.                           |
 | 4   | Submit         | Navigate to `Search Results` with query params in the URL (shareable).                                                                                                  |                                                                                                                                 |
 
+**As implemented in Phase 5 (2026-10-04):** the home page carries the search box (place from the gazetteer, optional pickup/return days, vehicle type) and quick links to the launch towns; it navigates to `/search?placeId=…&startDate=…&endDate=…&categoryId=…`. Dates are optional in this phase (without them the list shows all discoverable vehicles and no availability promise); "use my location" and place type-ahead are deferred (`GET /places/suggest` exists for the next iteration).
+
 ### 1.2 Search Results → Filter → Compare
 
 | #   | Step              | System behaviour                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -72,6 +74,8 @@ Timers (platform settings): provider response window (default 24 h, shorter when
 | 9   | Compare           | MVP: side-by-side comparison is implicit via consistent cards. Later: pin up to 3 vehicles into a `Compare` drawer.                                                                                                                                                                                                                                                                                          |
 
 Empty state: "No vehicles available in Mirissa for these dates" with suggestions (widen radius to 30 km, shift dates ±1 day, other categories) and a "Notify me / Tell providers about demand" capture (stores a `search_log` row — Later).
+
+**As implemented in Phase 5 (2026-10-04):** `/search` lists only discoverable vehicles (approved, active provider and location, ≥ 3 photos) and, with dates, only those free for the whole window and within the listing's min/max days. Cards show the primary photo, title, make/model/year, category, transmission, fuel, seats, AC, town and distance from the searched place, provider name with the "Platform-approved provider" badge, delivery, daily rate, deposit, included km, minimum days and the **estimated** total for the dates. Filters: vehicle type, transmission, fuel, minimum seats, daily price range, AC, delivery. Sorts: recommended (distance, then price), distance, price low→high, price high→low. "Show map" adds a MapLibre map with pins at the **approximate** area; it is optional and the list never depends on it. Pagination is "Show more" (cursor). Empty state suggests another town, dates or fewer filters; demand capture is deferred.
 
 ### 1.3 View Vehicle
 
@@ -87,6 +91,8 @@ Empty state: "No vehicles available in Mirissa for these dates" with suggestions
 - Call to action: **Request to book** (MVP) / **Book instantly** (Later)
 
 Changing dates here re-runs the quote; if the vehicle is unavailable for the new dates the CTA is replaced by "Not available — see similar vehicles".
+
+**As implemented in Phase 5 (2026-10-04):** `/vehicles/[slug]` is server-rendered (title/description metadata, canonical URL, Open Graph image) with a photo gallery, specifications, description, pricing and rental rules, the approximate pickup area on a map, the provider summary (display name, platform-approved badge, town, approved since, listings count, description — **no phone number**) and a date panel that checks real availability and shows the estimated total with the explicit note that it is not a booking quote. The call to action is "Request booking — coming next" (disabled); no booking, payment or quote token exists yet. Reviews, the 90-day calendar and licensing notices arrive with later phases.
 
 ### 1.4 Booking request
 

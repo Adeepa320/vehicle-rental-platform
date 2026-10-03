@@ -11,6 +11,7 @@ import {
 import { PaginationQuerySchema } from '../providers/provider';
 import { SlugIdSchema } from '../reference/reference';
 import { ProviderLocationSchema } from './location';
+import { MIN_VEHICLE_PHOTOS, VehiclePhotoSchema } from './photo';
 
 // ------------------------------------------------------------------ enums
 
@@ -285,7 +286,10 @@ export const VehicleRequiredSchema = z.object({
  * required fields, category-specific fields, pricing consistency. Shared by
  * the API (submit/approve) and the web form (checklist).
  */
-export function vehicleSubmissionIssues(v: Partialish): ApiErrorDetail[] {
+export function vehicleSubmissionIssues(
+  v: Partialish,
+  options: { photoCount?: number } = {},
+): ApiErrorDetail[] {
   const issues: ApiErrorDetail[] = [];
   const required = VehicleRequiredSchema.safeParse(
     Object.fromEntries(Object.entries(v).filter(([, value]) => value !== null)),
@@ -307,6 +311,12 @@ export function vehicleSubmissionIssues(v: Partialish): ApiErrorDetail[] {
     if (!has(v[field])) issues.push({ field, issue: 'required for this vehicle category' });
   }
   issues.push(...categoryApplicabilityIssues(v), ...pricingIssues(v));
+  if (options.photoCount !== undefined && options.photoCount < MIN_VEHICLE_PHOTOS) {
+    issues.push({
+      field: 'photos',
+      issue: `at least ${MIN_VEHICLE_PHOTOS} photos are required (${options.photoCount} uploaded)`,
+    });
+  }
   const seen = new Set<string>();
   return issues.filter((i) => {
     const key = `${i.field}:${i.issue}`;
@@ -326,6 +336,9 @@ export const VehicleSchema = z.object({
   id: z.uuid(),
   providerId: z.uuid(),
   status: VehicleStatusSchema,
+  /** Public URL slug; null until first approval. */
+  slug: z.string().nullable(),
+  photos: z.array(VehiclePhotoSchema),
   categoryId: z.string(),
   locationId: z.uuid().nullable(),
   title: z.string().nullable(),
@@ -381,6 +394,9 @@ export type Vehicle = z.infer<typeof VehicleSchema>;
 export const VehicleSummarySchema = z.object({
   id: z.uuid(),
   status: VehicleStatusSchema,
+  slug: z.string().nullable(),
+  photoCount: z.number().int().min(0),
+  thumbnailUrl: z.url().nullable(),
   categoryId: z.string(),
   locationId: z.uuid().nullable(),
   title: z.string().nullable(),

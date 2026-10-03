@@ -10,11 +10,13 @@ import {
   DistrictSchema,
   HealthResponseSchema,
   MessageResponseSchema,
+  PlaceSuggestionSchema,
   PlaceSummarySchema,
   ProviderApplicationSchema,
   ProviderLocationListSchema,
   ProviderLocationSchema,
   ProviderProfileSchema,
+  PublicVehicleDetailSchema,
   ReadyResponseSchema,
   RegisterResponseSchema,
   UserSchema,
@@ -23,7 +25,10 @@ import {
   VehicleHoldListSchema,
   VehicleHoldSchema,
   VehicleListSchema,
+  VehiclePhotoListSchema,
+  VehiclePhotoSchema,
   VehicleSchema,
+  VehicleSearchResponseSchema,
   VerifyEmailResponseSchema,
   type AdminProviderApplication,
   type AdminProviderApplicationList,
@@ -40,6 +45,7 @@ import {
   type HealthResponse,
   type LoginRequest,
   type MessageResponse,
+  type PlaceSuggestion,
   type PlaceSummary,
   type ProviderApplication,
   type ProviderApplicationDraft,
@@ -47,6 +53,7 @@ import {
   type ProviderLocation,
   type ProviderProfile,
   type ProviderStatus,
+  type PublicVehicleDetail,
   type ReadyResponse,
   type RegisterRequest,
   type RegisterResponse,
@@ -59,6 +66,8 @@ import {
   type VehicleAvailability,
   type VehicleCategory,
   type VehicleHold,
+  type VehiclePhoto,
+  type VehicleSearchResponse,
   type VehicleStatus,
   type VehicleSummary,
   type VerifyEmailResponse,
@@ -86,10 +95,14 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+export type QueryParams = Record<string, string | number | undefined>;
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
-  query?: Record<string, string | number | undefined>;
+  /** Multipart upload; the browser sets the content type and boundary. */
+  formData?: FormData;
+  query?: QueryParams;
   accessToken?: string;
   /** Non-2xx statuses whose body is still parsed with the success schema (e.g. 503 for /ready). */
   allowStatuses?: number[];
@@ -126,9 +139,14 @@ export function createApiClient(options: ApiClientOptions) {
         ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
         ...(opts.accessToken ? { authorization: `Bearer ${opts.accessToken}` } : {}),
       },
-      ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+      ...(opts.body !== undefined
+        ? { body: JSON.stringify(opts.body) }
+        : opts.formData
+          ? { body: opts.formData }
+          : {}),
       credentials: opts.withCredentials ? 'include' : 'same-origin',
-      signal: AbortSignal.timeout(timeoutMs),
+      // Uploads of several megabytes need more than the JSON timeout.
+      signal: AbortSignal.timeout(opts.formData ? Math.max(timeoutMs, 60_000) : timeoutMs),
       cache: 'no-store',
     });
 
@@ -238,6 +256,21 @@ export function createApiClient(options: ApiClientOptions) {
         request('/reference/places', z.array(PlaceSummarySchema), { query: { districtId } }),
       vehicleCategories: (): Promise<VehicleCategory[]> =>
         request('/reference/vehicle-categories', z.array(VehicleCategorySchema)),
+    },
+
+    /** Customer-facing, unauthenticated discovery. */
+    public: {
+      search: (query: QueryParams): Promise<VehicleSearchResponse> =>
+        request('/vehicles/search', VehicleSearchResponseSchema, { query }),
+      vehicle: (
+        slug: string,
+        window: { startsAt?: string; endsAt?: string } = {},
+      ): Promise<PublicVehicleDetail> =>
+        request(`/vehicles/${encodeURIComponent(slug)}`, PublicVehicleDetailSchema, {
+          query: window,
+        }),
+      suggestPlaces: (q: string, limit = 8): Promise<PlaceSuggestion[]> =>
+        request('/places/suggest', z.array(PlaceSuggestionSchema), { query: { q, limit } }),
     },
 
     providers: {
@@ -362,6 +395,37 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       deleteBlock: (accessToken: string, id: string, blockId: string): Promise<void> =>
         request(`/providers/me/vehicles/${id}/blocks/${blockId}`, NoContentSchema, {
+          method: 'DELETE',
+          accessToken,
+        }),
+
+      listPhotos: (accessToken: string, id: string): Promise<VehiclePhoto[]> =>
+        request(
+          `/providers/me/vehicles/${id}/photos`,
+          VehiclePhotoListSchema,
+          withToken(accessToken),
+        ),
+      uploadPhoto: (accessToken: string, id: string, file: Blob): Promise<VehiclePhoto> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return request(`/providers/me/vehicles/${id}/photos`, VehiclePhotoSchema, {
+          method: 'POST',
+          formData,
+          accessToken,
+        });
+      },
+      reorderPhotos: (
+        accessToken: string,
+        id: string,
+        photoIds: string[],
+      ): Promise<VehiclePhoto[]> =>
+        request(`/providers/me/vehicles/${id}/photos/order`, VehiclePhotoListSchema, {
+          method: 'PATCH',
+          body: { photoIds },
+          accessToken,
+        }),
+      deletePhoto: (accessToken: string, id: string, photoId: string): Promise<void> =>
+        request(`/providers/me/vehicles/${id}/photos/${photoId}`, NoContentSchema, {
           method: 'DELETE',
           accessToken,
         }),

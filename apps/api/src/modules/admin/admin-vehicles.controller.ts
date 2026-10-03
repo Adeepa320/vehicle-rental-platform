@@ -24,6 +24,7 @@ import { ApiZodBody, ApiZodResponse } from '../../openapi/zod-openapi';
 import { requestMeta, type AuthenticatedUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { VehiclePhotosService } from '../catalogue/vehicle-photos.service';
 import { toAdminVehicle, toAdminVehicleSummary } from '../catalogue/vehicle.mappers';
 import { AdminVehicleReviewService } from './admin-vehicle-review.service';
 
@@ -34,7 +35,10 @@ const IdPipe = new ZodValidationPipe(z.uuid());
 @Roles('admin', 'super_admin')
 @Controller('admin/vehicles')
 export class AdminVehiclesController {
-  constructor(private readonly review: AdminVehicleReviewService) {}
+  constructor(
+    private readonly review: AdminVehicleReviewService,
+    private readonly photos: VehiclePhotosService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Vehicle listings, newest first; filter by status or provider' })
@@ -43,20 +47,34 @@ export class AdminVehiclesController {
     @Query(new ZodValidationPipe(AdminVehicleListQuerySchema)) query: AdminVehicleListQuery,
   ): Promise<AdminVehicleList> {
     const page = await this.review.list(query);
+    const photos = await this.photos.listActiveFor(page.data.map((row) => row.vehicle.id));
     return {
-      data: page.data.map((row) => toAdminVehicleSummary(row.vehicle, row.provider)),
+      data: page.data.map((row) =>
+        toAdminVehicleSummary(
+          row.vehicle,
+          row.provider,
+          (photos.get(row.vehicle.id) ?? []).map((p) => this.photos.toView(p)),
+        ),
+      ),
       nextCursor: page.nextCursor,
     };
   }
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Full listing with provider, owner, pickup location and internal notes',
+    summary: 'Full listing with photos, provider, owner, pickup location and internal notes',
   })
   @ApiZodResponse(200, AdminVehicleSchema)
   async get(@Param('id', IdPipe) id: string): Promise<AdminVehicle> {
     const d = await this.review.get(id);
-    return toAdminVehicle(d.vehicle, d.provider, d.owner, d.location, d.locationVehicleCount);
+    return toAdminVehicle(
+      d.vehicle,
+      d.provider,
+      d.owner,
+      d.location,
+      d.locationVehicleCount,
+      await this.photos.listViews(id),
+    );
   }
 
   @Post(':id/start-review')
@@ -92,7 +110,10 @@ export class AdminVehiclesController {
 
   @Post(':id/approve')
   @HttpCode(200)
-  @ApiOperation({ summary: 'submitted | under_review → approved (completeness re-checked)' })
+  @ApiOperation({
+    summary:
+      'submitted | under_review → approved (completeness incl. photos re-checked; slug assigned)',
+  })
   @ApiZodBody(VehicleReviewNotesRequestSchema)
   @ApiZodResponse(200, AdminVehicleSchema)
   async approve(

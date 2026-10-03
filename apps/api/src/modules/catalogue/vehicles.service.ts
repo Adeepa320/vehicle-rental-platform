@@ -11,6 +11,7 @@ import {
   type VehicleStatus,
 } from '@vrp/contracts';
 import {
+  vehiclePhotos,
   vehicles,
   type Database,
   type DatabaseExecutor,
@@ -18,7 +19,7 @@ import {
   type ProviderProfile,
   type Vehicle,
 } from '@vrp/database';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { PinoLogger } from 'nestjs-pino';
 
 import { ApiException } from '../../common/errors/api.exception';
@@ -312,11 +313,22 @@ export class VehiclesService {
 
   /** Submission checklist plus the live state of the referenced location. */
   async completenessIssues(providerId: string, row: Vehicle): Promise<ApiErrorDetail[]> {
-    const issues = vehicleSubmissionIssues(vehicleFields(row));
+    const issues = vehicleSubmissionIssues(vehicleFields(row), {
+      photoCount: await this.countPhotos(row.id),
+    });
     if (row.locationId && !(await this.locations.isUsable(providerId, row.locationId))) {
       issues.push({ field: 'locationId', issue: 'the pickup location is inactive' });
     }
     return issues;
+  }
+
+  /** Active photos; the submission checklist requires `MIN_VEHICLE_PHOTOS` of them. */
+  async countPhotos(vehicleId: string, executor: DatabaseExecutor = this.db): Promise<number> {
+    const [row] = await executor
+      .select({ count: sql<number>`count(*)::int` })
+      .from(vehiclePhotos)
+      .where(and(eq(vehiclePhotos.vehicleId, vehicleId), isNull(vehiclePhotos.deletedAt)));
+    return row?.count ?? 0;
   }
 
   // ------------------------------------------------------------- helpers

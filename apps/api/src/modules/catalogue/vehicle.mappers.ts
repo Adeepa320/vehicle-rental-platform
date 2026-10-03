@@ -7,6 +7,7 @@ import {
   type Vehicle as VehicleView,
   type VehicleFields,
   type VehicleHold as VehicleHoldView,
+  type VehiclePhoto as VehiclePhotoView,
   type VehicleSummary,
 } from '@vrp/contracts';
 import type { ProviderLocation, ProviderProfile, User, Vehicle, VehicleHold } from '@vrp/database';
@@ -54,14 +55,16 @@ export function vehicleFields(row: Vehicle): VehicleFieldValues {
   };
 }
 
-/** Provider's own view: full registration number, no admin notes. */
-export function toVehicle(row: Vehicle): VehicleView {
+/** Provider's own view: full registration number, photos, no admin notes. */
+export function toVehicle(row: Vehicle, photos: VehiclePhotoView[]): VehicleView {
   const fields = vehicleFields(row);
-  const issues = vehicleSubmissionIssues(fields);
+  const issues = vehicleSubmissionIssues(fields, { photoCount: photos.length });
   return {
     id: row.id,
     providerId: row.providerId,
     status: row.status,
+    slug: row.slug,
+    photos,
     ...fields,
     categoryId: row.categoryId,
     hasAc: row.hasAc,
@@ -85,10 +88,13 @@ export function toVehicle(row: Vehicle): VehicleView {
   };
 }
 
-export function toVehicleSummary(row: Vehicle): VehicleSummary {
+export function toVehicleSummary(row: Vehicle, photos: VehiclePhotoView[]): VehicleSummary {
   return {
     id: row.id,
     status: row.status,
+    slug: row.slug,
+    photoCount: photos.length,
+    thumbnailUrl: photos[0]?.variants.thumb ?? null,
     categoryId: row.categoryId,
     locationId: row.locationId,
     title: row.title,
@@ -110,10 +116,11 @@ export function toAdminVehicle(
   provider: ProviderProfile,
   owner: OwnerRow,
   location: ProviderLocation | null,
-  locationVehicleCount = 0,
+  locationVehicleCount: number,
+  photos: VehiclePhotoView[],
 ): AdminVehicle {
   return {
-    ...toVehicle(row),
+    ...toVehicle(row, photos),
     adminNotes: row.adminNotes,
     reviewedBy: row.reviewedBy,
     reviewedAt: iso(row.reviewedAt),
@@ -130,9 +137,10 @@ export function toAdminVehicle(
 export function toAdminVehicleSummary(
   row: Vehicle,
   provider: Pick<ProviderProfile, 'id' | 'displayName'>,
+  photos: VehiclePhotoView[],
 ): AdminVehicleSummary {
   return {
-    ...toVehicleSummary(row),
+    ...toVehicleSummary(row, photos),
     provider: { id: provider.id, displayName: provider.displayName },
   };
 }

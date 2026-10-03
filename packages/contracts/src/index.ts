@@ -9,3 +9,5 @@ export * from './common/money';
 export * from './vehicles/location';
 export * from './vehicles/vehicle';
 export * from './vehicles/availability';
+export * from './vehicles/photo';
+export * from './discovery/public';

@@ -14,6 +14,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { AuthCard, FormField, FormMessage } from '@/components/auth/form-primitives';
+import { PhotoManager } from '@/components/provider/photo-manager';
 import { ProviderNav } from '@/components/provider/provider-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -132,6 +133,15 @@ export default function VehicleDetailPage() {
           </div>
         ) : null}
       </header>
+
+      <PhotoManager
+        vehicleId={vehicle.id}
+        photos={vehicle.photos}
+        editable={!suspendedProvider && vehicle.editable === 'all'}
+        onChanged={() => {
+          void withAccessToken((t) => api.vehicles.get(t, vehicle.id)).then(setVehicle);
+        }}
+      />
 
       <VehicleForm
         key={vehicle.updatedAt}

@@ -77,6 +77,28 @@ export const envSchema = z
     SMTP_USER: z.string().min(1).optional(),
     SMTP_PASS: z.string().min(1).optional(),
 
+    // ---- object storage (S3-compatible; MinIO locally, TECH_DECISIONS D42) ----
+    /** `s3` (MinIO locally, any S3-compatible service later) or `memory` (tests). */
+    STORAGE_PROVIDER: z.enum(['s3', 'memory']).default('s3'),
+    STORAGE_ENDPOINT: z.url().default('http://localhost:9000'),
+    STORAGE_REGION: z.string().min(1).default('us-east-1'),
+    /** MinIO's documented default root credentials; local development only (refused in production). */
+    STORAGE_ACCESS_KEY: z.string().min(1).default('minioadmin'),
+    STORAGE_SECRET_KEY: z.string().min(1).default('minioadmin'),
+    STORAGE_BUCKET_PRIVATE: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'must be a valid bucket name')
+      .default('vrp-private'),
+    STORAGE_BUCKET_PUBLIC: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'must be a valid bucket name')
+      .default('vrp-public'),
+    /** Base URL from which objects in the public bucket are served (MinIO path-style locally, a CDN or custom domain later). */
+    STORAGE_PUBLIC_URL: z.url().default('http://localhost:9000/vrp-public'),
+    STORAGE_FORCE_PATH_STYLE: booleanString.default(true),
+    /** Create buckets and the public-read policy at startup. Defaults to true outside production. */
+    STORAGE_AUTO_CREATE_BUCKETS: booleanString.optional(),
+
     // ---- developer tooling ----
     /** Serve Swagger UI at /api/docs. Defaults to true outside production. */
     OPENAPI_ENABLED: booleanString.optional(),
@@ -95,6 +117,20 @@ export const envSchema = z
           code: 'custom',
           path: ['EMAIL_PROVIDER'],
           message: 'the in-memory e-mail provider is for tests only',
+        });
+      }
+      if (env.STORAGE_PROVIDER === 'memory') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['STORAGE_PROVIDER'],
+          message: 'the in-memory storage provider is for tests only',
+        });
+      }
+      if (env.STORAGE_ACCESS_KEY === 'minioadmin' || env.STORAGE_SECRET_KEY === 'minioadmin') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['STORAGE_ACCESS_KEY'],
+          message: 'set real object-storage credentials in production',
         });
       }
     }

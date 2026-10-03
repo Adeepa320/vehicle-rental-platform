@@ -1,7 +1,7 @@
 # Local development services for the vehicle rental platform.
 # Usage (from repo root):  pnpm db:up   |  pnpm db:down  |  pnpm db:logs
-# Only PostgreSQL + PostGIS is needed in Phase 1. Mailpit/MinIO are added when
-# email (Phase 2) and file uploads (Phase 3) are implemented.
+# PostgreSQL + PostGIS (Phase 1), Mailpit e-mail catcher (Phase 2) and MinIO
+# S3-compatible object storage for vehicle photos (Phase 5, development only).
 name: vehicle-rental
 
 services:
@@ -48,5 +48,23 @@ services:
       timeout: 5s
       retries: 12
 
+  # Local S3-compatible object storage (Phase 5+): vehicle photos. Development only;
+  # production uses any S3-compatible provider through the same client (TECH_DECISIONS D42).
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: vehicle-rental-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - '${MINIO_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio-data:/data
+    # The Chainguard image is minimal (no shell/curl), so readiness is checked by the API at startup.
+
 volumes:
   db-data:
+  minio-data:

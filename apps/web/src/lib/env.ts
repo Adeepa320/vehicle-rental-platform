@@ -8,6 +8,8 @@ const DEFAULT_API_URL = 'http://localhost:4000/api/v1';
  */
 const publicEnvSchema = z.object({
   NEXT_PUBLIC_API_URL: z.url().default(DEFAULT_API_URL),
+  /** MapLibre style JSON. Defaults to OpenFreeMap (free, no key); any style URL works (TECH_DECISIONS D46). */
+  NEXT_PUBLIC_MAP_STYLE_URL: z.url().default('https://tiles.openfreemap.org/styles/liberty'),
 });
 
 const serverEnvSchema = z.object({
@@ -16,6 +18,7 @@ const serverEnvSchema = z.object({
 
 export const publicEnv = publicEnvSchema.parse({
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NEXT_PUBLIC_MAP_STYLE_URL: process.env.NEXT_PUBLIC_MAP_STYLE_URL,
 });
 
 /** Server-only variables. Call from server components, route handlers or server actions. */

@@ -110,6 +110,8 @@ export const vehicles = pgTable(
       .notNull()
       .references(() => vehicleCategories.id),
     status: vehicleStatus('status').notNull().default('draft'),
+    /** Public URL slug (`toyota-aqua-2018-mirissa-ab12`); generated on first approval (TECH_DECISIONS D45). */
+    slug: text('slug'),
 
     title: text('title'),
     internalName: text('internal_name'),
@@ -169,6 +171,9 @@ export const vehicles = pgTable(
     index('vehicles_location_id_idx').on(t.locationId),
     index('vehicles_category_id_idx').on(t.categoryId),
     index('vehicles_status_idx').on(t.status, t.submittedAt),
+    uniqueIndex('vehicles_slug_key')
+      .on(t.slug)
+      .where(sql`${t.slug} is not null`),
     uniqueIndex('vehicles_provider_registration_key')
       .on(t.providerId, t.registrationNumber)
       .where(sql`${t.deletedAt} is null`),

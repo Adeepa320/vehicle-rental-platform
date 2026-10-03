@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { AdminNav } from '@/components/admin/admin-nav';
 import { ReasonAction } from '@/components/admin/reason-action';
+import { Photo } from '@/components/public/photo';
 import { AuthCard, FormMessage } from '@/components/auth/form-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -189,6 +190,31 @@ export default function AdminVehicleDetailPage() {
           </ul>
         </FormMessage>
       ) : null}
+
+      <AuthCard
+        title={`Photos (${vehicle.photos.length})`}
+        description="Exactly what customers will see; metadata is stripped at upload."
+      >
+        {vehicle.photos.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No photos uploaded.</p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {vehicle.photos.map((photo, index) => (
+              <li key={photo.id} className="grid gap-1">
+                <Photo
+                  src={photo.variants.medium}
+                  alt={`Photo ${index + 1}`}
+                  className="aspect-[4/3] w-full"
+                />
+                <span className="text-muted-foreground text-xs">
+                  {photo.isPrimary ? 'Primary · ' : ''}
+                  {photo.width}×{photo.height}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AuthCard>
 
       <AuthCard title="Vehicle">
         <Rows rows={details} />

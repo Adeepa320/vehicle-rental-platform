@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AdminVehicleListQuery, VehicleStatus } from '@vrp/contracts';
 import {
+  places,
   providerLocations,
   providerProfiles,
   users,
@@ -23,7 +24,7 @@ import type { Env } from '../../config/env.schema';
 import { DATABASE } from '../../database/database.module';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser, RequestMeta } from '../auth/auth.types';
-import { ownerOf, vehicleLabel } from '../catalogue/catalogue.helpers';
+import { makeVehicleSlug, ownerOf, vehicleLabel } from '../catalogue/catalogue.helpers';
 import { ProviderLocationsService } from '../catalogue/provider-locations.service';
 import { ADMIN_VEHICLE_TRANSITIONS, type AdminVehicleAction } from '../catalogue/vehicle.state';
 import { VehiclesService } from '../catalogue/vehicles.service';
@@ -209,7 +210,7 @@ export class AdminVehicleReviewService {
     meta: RequestMeta,
   ): Promise<Vehicle> {
     return this.db.transaction(async (tx) => {
-      const vehicle = await this.transition(tx, id, 'approve', admin, {
+      let vehicle = await this.transition(tx, id, 'approve', admin, {
         approvedAt: new Date(),
         reviewReason: null,
         ...(input.adminNotes !== undefined ? { adminNotes: input.adminNotes } : {}),
@@ -223,6 +224,7 @@ export class AdminVehicleReviewService {
           issues,
         );
       }
+      vehicle = await this.ensureSlug(tx, vehicle);
       await this.audit.record(this.adminEvent(admin, 'vehicle.approved', vehicle.id, meta), tx);
       const { owner } = await this.ownerAndProvider(tx, vehicle.providerId);
       await this.email.enqueue(
@@ -299,6 +301,38 @@ export class AdminVehicleReviewService {
   }
 
   // ------------------------------------------------------------- helpers
+
+  /**
+   * Public slug assigned on first approval and stable afterwards (TECH_DECISIONS
+   * D45). Candidates are checked before writing because a unique violation
+   * would abort the surrounding transaction; the unique index stays the guard.
+   */
+  private async ensureSlug(tx: DatabaseExecutor, vehicle: Vehicle): Promise<Vehicle> {
+    if (vehicle.slug) return vehicle;
+    const [place] = vehicle.locationId
+      ? await tx
+          .select({ slug: places.slug })
+          .from(providerLocations)
+          .innerJoin(places, eq(places.id, providerLocations.placeId))
+          .where(eq(providerLocations.id, vehicle.locationId))
+      : [];
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = makeVehicleSlug(vehicle, place?.slug ?? null);
+      const [taken] = await tx
+        .select({ id: vehicles.id })
+        .from(vehicles)
+        .where(eq(vehicles.slug, candidate))
+        .limit(1);
+      if (taken) continue;
+      const [updated] = await tx
+        .update(vehicles)
+        .set({ slug: candidate })
+        .where(eq(vehicles.id, vehicle.id))
+        .returning();
+      if (updated) return updated;
+    }
+    throw new Error('Could not allocate a unique vehicle slug');
+  }
 
   private async transition(
     tx: DatabaseExecutor,

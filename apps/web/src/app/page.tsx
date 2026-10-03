@@ -1,109 +1,96 @@
-import type { HealthResponse, ReadyResponse } from '@vrp/contracts';
+import type { PlaceSummary } from '@vrp/contracts';
+import Link from 'next/link';
 
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SearchForm } from '@/components/public/search-form';
+import { Button } from '@/components/ui/button';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { createApiClient } from '@/lib/api-client';
 import { serverEnv } from '@/lib/env';
+import { searchHref } from '@/lib/search-params';
 
-// Status must reflect the API right now, never a cached render.
+// Quick picks come from the live gazetteer; never a stale render.
 export const dynamic = 'force-dynamic';
 
-type Probe<T> = { ok: true; data: T } | { ok: false; error: string };
-
-async function probe<T>(run: () => Promise<T>): Promise<Probe<T>> {
-  try {
-    return { ok: true, data: await run() };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
+const VALUE_PROPS = [
+  {
+    title: 'Real availability',
+    body: 'Search with your dates and see only vehicles that are actually free. Providers keep their calendars up to date on the platform.',
+  },
+  {
+    title: 'Transparent prices',
+    body: 'Daily rate, deposit, included kilometres and extra-km charges are shown up front, in rupees, before you contact anyone.',
+  },
+  {
+    title: 'Platform-approved providers',
+    body: 'Every provider is reviewed by our team before listing. Exact pickup addresses are shared once a booking is confirmed.',
+  },
+];
 
 export default async function HomePage() {
   const env = serverEnv();
   const api = createApiClient({ baseUrl: env.API_INTERNAL_URL, timeoutMs: 3_000 });
-  const [health, ready] = await Promise.all([
-    probe<HealthResponse>(() => api.getHealth()),
-    probe<ReadyResponse>(() => api.getReadiness()),
-  ]);
+  let launchPlaces: PlaceSummary[] = [];
+  try {
+    launchPlaces = (await api.reference.places()).filter((p) => p.isLaunchArea).slice(0, 8);
+  } catch {
+    // The search box still works; quick picks are a convenience.
+  }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-4 py-16">
-      <header className="space-y-2">
-        <p className="text-muted-foreground text-sm font-medium">Phase 1 · Foundation</p>
-        <h1 className="text-3xl font-semibold tracking-tight">Vehicle Rental Platform</h1>
-        <p className="text-muted-foreground">
-          The web application is running. This page only reports the status of the local foundation;
-          marketplace features arrive in later phases.
-        </p>
-      </header>
-
-      <section className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Web app</CardTitle>
-            <CardDescription>Next.js App Router, Tailwind CSS, shadcn/ui</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Badge>Running</Badge>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>API</CardTitle>
-            <CardDescription>GET /health (liveness)</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {health.ok ? (
-              <>
-                <Badge>{health.data.status}</Badge>
-                <p className="text-muted-foreground text-sm">
-                  {health.data.service} v{health.data.version} · {health.data.environment} · up{' '}
-                  {health.data.uptimeSeconds}s
-                </p>
-              </>
-            ) : (
-              <>
-                <Badge variant="destructive">Unreachable</Badge>
-                <p className="text-muted-foreground text-sm">{health.error}</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="sm:col-span-2">
-          <CardHeader>
-            <CardTitle>Readiness</CardTitle>
-            <CardDescription>GET /ready (database, PostGIS, migrations)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {ready.ok ? (
-              <ul className="grid gap-2 sm:grid-cols-3">
-                {Object.entries(ready.data.checks).map(([name, check]) => (
-                  <li key={name} className="flex flex-col gap-1 rounded-md border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium capitalize">{name}</span>
-                      <Badge variant={check.status === 'up' ? 'default' : 'destructive'}>
-                        {check.status}
-                      </Badge>
-                    </div>
-                    <span className="text-muted-foreground text-xs">
-                      {check.message ??
-                        (check.latencyMs !== undefined ? `${check.latencyMs} ms` : '')}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted-foreground text-sm">{ready.error}</p>
-            )}
-          </CardContent>
-        </Card>
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12">
+      <section className="space-y-6">
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-sm font-medium">Sri Lanka · South Coast</p>
+          <h1 className="text-4xl font-semibold tracking-tight">
+            Rent a car, van, SUV or bike from approved local providers
+          </h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Compare real vehicles in Matara, Weligama, Mirissa, Galle and Unawatuna with honest
+            daily prices and live availability. Browse today; booking requests open in the next
+            release.
+          </p>
+        </div>
+        <SearchForm />
+        {launchPlaces.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Popular:</span>
+            {launchPlaces.map((place) => (
+              <Button
+                key={place.id}
+                size="sm"
+                variant="outline"
+                nativeButton={false}
+                render={<Link href={searchHref({ placeId: place.id, sort: 'relevance' })} />}
+              >
+                {place.name}
+              </Button>
+            ))}
+          </div>
+        ) : null}
       </section>
 
-      <footer className="text-muted-foreground text-xs">
-        API base URL (server-side): {env.API_INTERNAL_URL}
-      </footer>
+      <section className="grid gap-4 sm:grid-cols-3">
+        {VALUE_PROPS.map((item) => (
+          <Card key={item.title}>
+            <CardHeader>
+              <CardTitle className="text-base">{item.title}</CardTitle>
+              <CardDescription>{item.body}</CardDescription>
+            </CardHeader>
+          </Card>
+        ))}
+      </section>
+
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-6">
+        <div>
+          <h2 className="text-lg font-semibold">Do you rent out vehicles?</h2>
+          <p className="text-muted-foreground text-sm">
+            List for free. Our team reviews every provider and every listing before it goes live.
+          </p>
+        </div>
+        <Button nativeButton={false} render={<Link href="/become-a-provider" />}>
+          Become a provider
+        </Button>
+      </section>
     </main>
   );
 }

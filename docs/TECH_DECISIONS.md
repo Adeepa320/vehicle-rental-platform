@@ -45,6 +45,12 @@
 | D39 | Category-aware specification rules in the contracts (no per-category tables, no JSON blob); plate handling  |
 | D40 | Availability on `vehicle_holds` now (blocks only); expression-based exclusion constraint; overlaps refused  |
 | D41 | `provider_locations`: district + place required, optional pin, one primary, deactivate-not-delete           |
+| D42 | Object storage behind `StorageService`: MinIO (dev only) via the S3 API; production provider deferred       |
+| D43 | Vehicle photos: API upload, byte-sniffing with sharp, metadata stripped, WebP variants, 3–12 per listing    |
+| D44 | Public search in PostgreSQL/PostGIS: searchable predicate, `NOT EXISTS` holds, cursor keyset sorts          |
+| D45 | Public vehicle slugs assigned on first approval; `GET /vehicles/{idOrSlug}`                                 |
+| D46 | Public location privacy: 0.005° grid snap or town centre; allow-list mappers; MapLibre + open tiles         |
+| D47 | Public pricing is informational: deterministic estimate from listed rates, no quote engine yet              |
 
 ---
 
@@ -328,6 +334,46 @@
 **Decision.** The design's `locations` table is implemented as `provider_locations` with `district_id` and `place_id` **required** (the gazetteer is what search will use), `geom` **nullable** (an optional typed-in pin validated against the Sri Lanka bounding box), one primary per provider enforced by a partial unique index, and deactivation instead of deletion (`409 LOCATION_IN_USE` while vehicles reference it; reactivation allowed). Delivery is modelled on the vehicle (flag + flat fee) instead of a location radius, because there is no map to draw a radius on. Inventory cascades when a provider profile is hard-deleted (only tests and data-erasure do that; production uses soft states).
 **Alternatives.** Mandatory coordinates — would force a map picker and therefore tiles/geocoding decisions now; hard delete — breaks future booking history.
 **Consequences.** Search in Phase 5 can start from `place_id`/`district_id` and use `geom` when present; a MapLibre picker can be added without schema changes.
+
+---
+
+## Phase 5 implementation decisions (2026-10-04)
+
+### D42 — Object storage behind `StorageService`: MinIO for development only
+
+**Decision.** A small `StorageProvider` abstraction (`put`, `get`, `delete`, `publicUrl`, `ensureBuckets`) with two implementations: `S3StorageProvider` (`@aws-sdk/client-s3`, path-style, works against MinIO locally and any S3-compatible service later) and `MemoryStorageProvider` (tests). MinIO runs in `infra/docker-compose.yml` (**development only**; the `cgr.dev/chainguard/minio` image, because MinIO's own Docker Hub and Quay repositories no longer allow anonymous pulls). Two buckets: `vrp-private` (originals) and `vrp-public` (variants, anonymous read via a bucket policy the API applies at startup when `STORAGE_AUTO_CREATE_BUCKETS` is on). Public URLs are built from `STORAGE_PUBLIC_URL`. **No cloud storage account is provisioned**; production storage (R2 per D7, or any S3-compatible service) is a deployment-time decision — only environment variables change.
+**Alternatives.** Provisioning R2 now — a paid account and credentials for a validation phase; Cloudinary — a second vendor and credit model; storing files on the API host disk — not portable, lost on redeploy.
+**Consequences.** Production hardening before exposure: real credentials (the schema refuses `minioadmin` in production), HTTPS endpoint, bucket policy managed by the operator, CDN in front of the public bucket.
+
+### D43 — Vehicle photos: API upload, content sniffing, metadata stripping, WebP variants
+
+**Decision.** Photos are uploaded through the API as multipart (one file ≤ 10 MB) instead of presigned PUTs: it needs no bucket CORS or browser-side credentials, validates the bytes before anything is stored and finishes in one round trip, which is the simplest reliable path for ≤ 12 photos per listing. `sharp` decides the format from the bytes (JPEG/PNG/WebP only; SVG, GIF/animated, executables and mislabelled files are refused), enforces 320×240 ≤ size ≤ 50 MP (`limitInputPixels` guards decompression bombs), applies EXIF orientation and writes three metadata-free WebP variants (400/1000/1600 px longest side) to the public bucket; the original is kept privately for future re-processing. Processing is synchronous in the request (hundreds of milliseconds); no job, no "processing" state. `vehicle_photos` is a purpose-built table; `file_objects` waits for a second file type. Listings need ≥ 3 photos to be submitted or approved (a Phase 4 rule change, applied to the tests and docs); photos can be changed while the listing is editable (`draft`, `changes_requested`), so what the admin approved is what customers see.
+**Alternatives.** Presign + complete + worker job (the design) — right for large private documents, over-engineered here; allowing arbitrary external image URLs — unverifiable and a hot-linking/privacy risk; `file-type` sniffing — `sharp` must decode anyway, so its verdict is authoritative.
+**Consequences.** `sharp` and `@aws-sdk/client-s3` are new API dependencies (prebuilt binaries, Apache-2.0); request bodies for this route are multipart (`multer` from `@nestjs/platform-express`, memory storage); photo changes after approval require "request changes" by an admin.
+
+### D44 — Public search in PostgreSQL/PostGIS
+
+**Decision.** `DiscoveryService` builds one query per page over `vehicles ⨝ provider_profiles ⨝ provider_locations ⨝ places ⨝ districts ⨝ vehicle_categories` with the **searchable predicate** (`approved`, `deleted_at IS NULL`, slug present, provider `active`, location active, category active, ≥ 3 photos via a correlated count), optional place filter `(place_id = :place OR ST_DWithin(geom, centre, radius))`, district and attribute filters, and with dates `NOT EXISTS (holds overlapping [start, end))` plus the listing's min/max rental days. Distance is `ST_Distance` (null without a pin). Sorts are total orders ending in the id; the cursor is a keyset over the sort keys (row-value comparison) and rejects a cursor from another sort. A second query fetches the primary photos. No search engine, no cache, no facets/total at validation volumes; indexes already present (GiST on both geographies, holds `(vehicle_id, starts_at, ends_at)`, `vehicles (status, submitted_at)`) are enough — new indexes only when `EXPLAIN` on real data justifies them.
+**Alternatives.** Elasticsearch/Meilisearch — a second system with availability consistency problems; offset pagination — unstable under inserts; computing availability client-side — would promise availability the server did not check.
+**Consequences.** The same predicate powers `GET /vehicles/{slug}` and the provider's public `vehicleCount`; the booking phase adds `kind = booking` holds and turnaround buffers to the `NOT EXISTS`.
+
+### D45 — Public vehicle slugs
+
+**Decision.** `vehicles.slug` (`make-model-year-town-xxxx`) is generated at **first approval** inside the approval transaction (candidates are checked for uniqueness before writing, because a unique violation would abort the transaction) and never changes afterwards, so public URLs are stable. Public lookups accept the slug or the id. Unapproved or hidden listings answer `404`, not `403`.
+**Alternatives.** Slug at creation — would leak draft data into URLs and change as the draft is edited; id-only URLs — poor for sharing and SEO.
+**Consequences.** Renaming a listing does not change its URL; a future "slug history" table can redirect if slugs must ever change.
+
+### D46 — Public location privacy and the map
+
+**Decision.** Public responses are produced only by allow-list mappers (`public.mappers.ts`). The map point is the provider pin **snapped to a 0.005° grid (≈ 550 m)** — deterministic, so repeated requests reveal nothing more — or the town centre from the gazetteer when there is no pin (`source` tells the UI which). No registration number (not even masked), address, pickup instructions/notes, exact coordinates, provider contact details or internal notes appear publicly; an e2e test asserts the forbidden strings are absent from the raw JSON. The map is MapLibre GL JS with a style URL from `NEXT_PUBLIC_MAP_STYLE_URL` (OpenFreeMap by default, no key); it is loaded client-side only, is optional on the results page, and degrades to a note on any error — the list never depends on it (D6).
+**Alternatives.** Random jitter — non-deterministic and averageable; exact pins — explicitly ruled out by SECURITY_AND_PRIVACY §13; Google/Mapbox — paid keys and ToS lock-in (D6).
+**Consequences.** When bookings exist, the exact pickup point is revealed to the customer after confirmation through an authenticated endpoint, not through these public models.
+
+### D47 — Public pricing is informational
+
+**Decision.** Search cards and the listing page show the provider's listed rates and, when dates are given, a deterministic **estimate** from `estimateRental` (whole 30-day months at the monthly rate, whole weeks at the weekly rate, remaining days at the daily rate, never above plain daily pricing), labelled "Estimated … Not a booking quote". No commission, customer fee, tax, delivery fee or signed quote token is computed or implied.
+**Alternatives.** Implementing §8.3's quote engine now — it belongs with bookings, where the advance/commission split and turnaround/notice rules are defined; showing only the daily rate — hides the weekly/monthly tiers providers configured.
+**Consequences.** The booking phase introduces the signed quote; the estimate function can seed its base-rental line.
 
 ---
 

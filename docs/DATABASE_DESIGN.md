@@ -1,6 +1,6 @@
 # Database Design
 
-**Status:** Draft v0.1 for review (planning phase, 2026-10-02). Migrations 0000–0009 implement Phases 1–4 locally; the "Phase N status" rows in §2 and the "As implemented" notes in §6 record every deviation from this draft.
+**Status:** Draft v0.1 for review (planning phase, 2026-10-02). Migrations 0000–0010 implement Phases 1–5 locally; the "Phase N status" rows in §2 and the "As implemented" notes in §6 record every deviation from this draft.
 **Related:** [ARCHITECTURE.md](ARCHITECTURE.md), [API_DESIGN.md](API_DESIGN.md), [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md), [TECH_DECISIONS.md](TECH_DECISIONS.md)
 
 ---
@@ -35,6 +35,7 @@
 | Phase 2 status     | Implemented 2026-10-03 (migrations `0003_auth`, `0004_users_updated_at_trigger`): enums `user_role`, `user_status`, `one_time_token_purpose`; tables `users`, `refresh_tokens`, `one_time_tokens` with application-generated UUIDv7 ids (`packages/database/src/ids.ts`). Deviations from §6.1, all deliberate for the lean scope: `users.email` and `password_hash` are NOT NULL until phone-first/OAuth accounts exist; `users.phone_e164` has no unique index while phones are unverified; `users.sessions_revoked_at` was added (immediate access-token invalidation); `avatar_file_id` waits for `file_objects`. `otp_codes` is implemented as `one_time_tokens` (e-mail link tokens; a `channel` column is added with SMS). `auth_identities`, `customer_driver_details`, `notifications`, `notification_deliveries`, `file_objects` are deferred to the phases that need them.                                                                                  |
 | Phase 3 status     | Implemented 2026-10-03 (migrations `0005_providers`, `0006_providers_updated_at_triggers`): enums `provider_type`, `provider_application_status`, `provider_status`; tables `provider_applications` (one per user; the submitted form as a snapshot, with `service_area_place_ids uuid[]` and `vehicle_category_ids text[]`), `provider_profiles` (created only on approval), `provider_service_areas`, `provider_vehicle_categories`, and `audit_events` (the generalised `admin_audit_logs`, §6.12). Deviations from §6.3, all deliberate for the lean scope (TECH_DECISIONS D30–D34): review state lives on the application, not as `verification_status` on the profile (the profile has `status active \| suspended`); no `legal_name` / `business_registration_no` / bank / commission / rating columns yet; `phone_verified_at` exists and stays NULL (no SMS verification); `provider_documents` and `file_objects` are not created (no document collection).  |
 | Phase 4 status     | Implemented 2026-10-03 (migrations `0007_vehicles`, `0008_vehicles_constraints`, `0009_vehicles_cascade`): enums `transmission`, `fuel_type`, `fuel_policy`, `vehicle_status`, `hold_kind`, `block_reason`; tables `provider_locations` (the design's `locations`; `geom` **nullable**, no delivery columns), `vehicles` (one `vehicle_status` enum for review + lifecycle, money as `numeric(12,2)` in LKR, no photo/document/rating/slug columns yet) and `vehicle_holds` (two `timestamptz` columns plus the expression-based exclusion constraint `EXCLUDE USING gist (vehicle_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)` in a custom migration; only `kind = 'block'` rows are written in Phase 4; the `booking_id` foreign key arrives with `bookings`). Inventory cascades when a provider profile is hard-deleted (test cleanup / data erasure). `vehicle_photos`, `vehicle_documents`, `file_objects` are not created (TECH_DECISIONS D37–D41). |
+| Phase 5 status     | Implemented 2026-10-04 (migration `0010_vehicle_photos_and_slug`): table `vehicle_photos` (purpose-built, §6.5; originals in the private bucket, WebP variants in the public bucket) and `vehicles.slug` (nullable, unique where not null; assigned on first approval). Search runs on the existing tables with PostGIS (`ST_DWithin`/`ST_Distance` on `provider_locations.geom` and `places.geom`) and `NOT EXISTS` over `vehicle_holds`; no new search table or index was needed at validation volumes (TECH_DECISIONS D44). `file_objects` (§6.11), `vehicle_documents` and `search_logs` are not created.                                                                                                                                                                                                                                                                                                                                                          |
 
 ## 3. Entity overview
 
@@ -557,6 +558,8 @@ Adding a category is an insert, not a migration.
 
 #### `vehicle_photos`
 
+**As implemented in Phase 5 (2026-10-04, TECH_DECISIONS D43).** `id` (UUIDv7), `vehicle_id` FK (cascade), `storage_key` (original object in the **private** bucket, server-generated `vehicles/<vehicleId>/<photoId>/original.<ext>`), `public_prefix` (`vehicles/<vehicleId>/<photoId>`; the public bucket holds `thumb.webp`, `medium.webp`, `large.webp` under it), `mime_type` (sniffed), `size_bytes`, `width`, `height` (after orientation), `sort_order` (0 = primary), `created_at`, `deleted_at`. Partial index `(vehicle_id, sort_order) WHERE deleted_at IS NULL`. There is no `file_id`/`file_objects` row and no `variants` JSON: variant URLs are derived from the prefix. `vehicles.primary_photo_id` is not needed (primary = lowest `sort_order`).
+
 | Column         | Type                                         |
 | -------------- | -------------------------------------------- |
 | id             | uuid PK                                      |
@@ -867,6 +870,8 @@ In-app notification feed; also the canonical record of what was sent.
 ### 6.11 Files
 
 #### `file_objects`
+
+**Phase 5 note (2026-10-04):** not created. Vehicle photos are the only files so far and use the purpose-built `vehicle_photos` table above (ownership through the vehicle, visibility implied by the bucket). The generic registry arrives with the second kind of file (documents, attachments).
 
 Registry for every object in storage; lets us enforce ownership, visibility, size limits and orphan cleanup.
 

@@ -21,6 +21,9 @@ export const TEST_ENV_DEFAULTS: Record<string, string> = {
   ARGON2_TIME_COST: '2',
   EMAIL_PROVIDER: 'memory',
   PGBOSS_SCHEMA: 'pgboss_test',
+  // Photos go to an in-memory store; the MinIO path is covered by the smoke test and an opt-in integration test.
+  STORAGE_PROVIDER: 'memory',
+  STORAGE_PUBLIC_URL: 'http://storage.test/vrp-public',
   OPENAPI_ENABLED: 'true',
 };
 
