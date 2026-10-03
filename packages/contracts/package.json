@@ -1,0 +1,37 @@
+{
+  "name": "@vrp/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared Zod schemas and TypeScript types for the /api/v1 contract (used by the API, the web app and future mobile clients)",
+  "license": "UNLICENSED",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "~24.19.1",
+    "@vrp/eslint-config": "workspace:*",
+    "@vrp/typescript-config": "workspace:*",
+    "eslint": "^9.39.5",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.3"
+  }
+}

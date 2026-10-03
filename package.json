@@ -1,0 +1,36 @@
+{
+  "name": "vehicle-rental-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sri Lankan vehicle rental marketplace — pnpm/Turborepo monorepo",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=12.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@vrp/web --filter=@vrp/api",
+    "dev:worker": "pnpm --filter @vrp/api dev:worker",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:logs": "docker compose -f infra/docker-compose.yml logs -f db",
+    "db:generate": "pnpm --filter @vrp/database generate",
+    "db:migrate": "pnpm --filter @vrp/database migrate",
+    "db:seed": "pnpm --filter @vrp/database seed",
+    "db:setup": "pnpm db:up && pnpm db:migrate && pnpm db:seed",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9",
+    "turbo": "^2.11.7",
+    "typescript": "~6.0.3"
+  }
+}
