@@ -51,6 +51,11 @@
 | D45 | Public vehicle slugs assigned on first approval; `GET /vehicles/{idOrSlug}`                                 |
 | D46 | Public location privacy: 0.005° grid snap or town centre; allow-list mappers; MapLibre + open tiles         |
 | D47 | Public pricing is informational: deterministic estimate from listed rates, no quote engine yet              |
+| D48 | Lean booking lifecycle without payment; temporary admin confirmation bridge; no fees, refunds or disputes   |
+| D49 | Signed quote tokens: HMAC-SHA256 over a compact payload with a pricing fingerprint, 15 min, no JWT          |
+| D50 | `Idempotency-Key` per customer in `booking_idempotency_keys`, claimed first inside the create transaction   |
+| D51 | Accept transaction: vehicle row locked first by every hold writer; version check; constraint is final guard |
+| D52 | Append-only `booking_events`; expiry sweep as a pg-boss schedule with injectable clock; settings from DB    |
 
 ---
 
@@ -374,6 +379,37 @@
 **Decision.** Search cards and the listing page show the provider's listed rates and, when dates are given, a deterministic **estimate** from `estimateRental` (whole 30-day months at the monthly rate, whole weeks at the weekly rate, remaining days at the daily rate, never above plain daily pricing), labelled "Estimated … Not a booking quote". No commission, customer fee, tax, delivery fee or signed quote token is computed or implied.
 **Alternatives.** Implementing §8.3's quote engine now — it belongs with bookings, where the advance/commission split and turnaround/notice rules are defined; showing only the daily rate — hides the weekly/monthly tiers providers configured.
 **Consequences.** The booking phase introduces the signed quote; the estimate function can seed its base-rental line.
+
+### D48 — Lean booking lifecycle without payment (Phase 6, 2026-10-04)
+
+**Context.** Phase 6 must prove the request → accept → confirm → pickup → return loop locally, on the validation budget, before any payment gateway exists (D8 keeps PayHere for Phase 7).
+**Decision.** Implement the full state machine of USER_FLOWS §0 (`requested, accepted, confirmed, active, completed, declined, expired, cancelled_by_customer, cancelled_by_provider, no_show`) with one deliberate substitute: `accepted → confirmed` is performed by an admin through `POST /admin/bookings/{id}/confirm-for-testing` — admin role only, requires the hold, audited (`audit_events` + `booking_events`), **refused when `NODE_ENV=production`**, no payment rows of any kind. Cancellation is allowed from `requested` / `accepted` / `confirmed` (customer) and `accepted` / `confirmed` (provider) with no fee and no refund computation, because nothing has been paid. The driver snapshot holds the name, licence country and expiry only — no licence or ID numbers (the encryption helpers of SECURITY §6 do not exist yet and the provider checks the physical licence at handover) and no documents. An `accepted` booking that is not confirmed within `payment_window_hours` expires and releases its hold, so a never-paid acceptance can never block a vehicle indefinitely.
+**Alternatives.** Marking bookings "paid" with fake payment records — pollutes the Phase 7 data model and tests; stopping at `accepted` — leaves pickup, return, no-show, contact reveal and the hold lifecycle untested; letting the provider confirm — changes the product promise ("confirmed means paid").
+**Consequences.** Phase 7 replaces the bridge with the PayHere webhook (`confirmation_source` becomes `payhere`), adds the money split to the snapshot, refund handling to cancellation and the policy preview to the UI. Until then every customer-facing text says that nothing is paid online. Revisit: remove the bridge in the same change that lands payments.
+
+### D49 — Signed quote tokens without a JWT library
+
+**Decision.** `GET /vehicles/{idOrSlug}/quote` returns the price (`computeBookingPrice` in `@vrp/contracts`, same tiers as the public estimate) and, when bookable, a token `base64url(payload).base64url(HMAC-SHA256(payload))` with `{ v, vid, s, e, sub, dep, fp, exp }`: vehicle id, window, subtotal, deposit, a 16-hex **pricing fingerprint** (hash of the vehicle's rate, deposit, km and rental-day fields) and an expiry 15 minutes out (`BOOKING_QUOTE_TTL_MINUTES`). `POST /bookings` verifies the signature (timing-safe), the expiry (`409 QUOTE_EXPIRED`), that the token matches the request's vehicle and window, and that the server-side price and fingerprint still equal the token's (`409 QUOTE_CHANGED` otherwise). The secret is `BOOKING_QUOTE_SECRET` (required in production, ≥ 32 chars); outside production a per-process secret is generated and logged as a warning.
+**Alternatives.** JWT (jose) — carries no identity here and adds header/claims ceremony; storing quotes in a table — a write per price check and a cleanup job for nothing; trusting the client's price — rejected outright (strict schemas drop every price field).
+**Consequences.** Quotes are stateless and free to issue; the client refreshes the price on `409`. Future lines (driver, delivery, fee, advance) extend the payload without changing the mechanism.
+
+### D50 — Idempotency keys for `POST /bookings`
+
+**Decision.** `Idempotency-Key` (8–128 chars) is required. Inside the create transaction the key is **claimed first** with `INSERT … ON CONFLICT DO NOTHING RETURNING` into `booking_idempotency_keys (customer_user_id, key, request_hash, booking_id)`; a concurrent duplicate blocks on that row until the first transaction commits and then finds the existing booking. Same key and same canonical request (the token is excluded so a refreshed quote still replays) → `200` with the original booking and `Idempotency-Replayed: true`; a different request → `409 IDEMPOTENCY_CONFLICT`. Keys are scoped per customer; a failed attempt rolls the claim back so a retry can succeed.
+**Alternatives.** Redis / in-memory cache — another component and not transactional with the booking; a unique index on `(customer, vehicle, window)` — would forbid legitimate re-requests after a decline.
+**Consequences.** Double submits, retries and three parallel identical requests create exactly one booking (tested). The table grows one row per booking; purge with the booking (cascade).
+
+### D51 — Accept transaction and lock ordering
+
+**Decision.** `BookingsService.accept` follows DATABASE_DESIGN §7.3 with the vehicle row locked **first** (`SELECT … FOR UPDATE` on `vehicles`), then the booking row, then the version check, the availability re-check, the hold insert, the transition, the auto-decline of overlapping `requested` bookings and the e-mails — all in one transaction. `AvailabilityService.createBlock` takes the same vehicle lock before inserting a manual block. Every status change is `UPDATE … WHERE status IN (from) AND version = $expected` (`409 STALE_VERSION`); the exclusion constraint stays the final guard, and both `23P01` and `40P01` are reported as `409 BOOKING_CONFLICT` / `AVAILABILITY_CONFLICT`.
+**Why.** The first implementation locked the booking row first and deadlocked under test: accept A holds the vehicle and tries to auto-decline B; accept B holds B's row and waits for the vehicle. A block inserted concurrently with an accept deadlocked for a subtler reason — an INSERT checks the exclusion index before its foreign-key `KEY SHARE` lock on `vehicles`, so the block waited on the accept's vehicle lock while the accept waited on the block's uncommitted index entry. Serialising all hold writers on the vehicle row removes both cycles.
+**Consequences.** Accepts for the same vehicle are strictly sequential (fine at any realistic volume); the concurrency suite (`bookings-concurrency.e2e.test.ts`) must keep passing whenever a new hold writer appears. Requested bookings never take the vehicle lock, so browsing and requesting stay unaffected.
+
+### D52 — Booking timeline, timers and settings
+
+**Decision.** `booking_events` is append-only at the database level (an UPDATE trigger raises `restrict_violation` for every change except the `ON DELETE SET NULL` of `actor_user_id` on account erasure, migrations 0012 / 0013); rows are written in the transaction of the change with codes and ids in `metadata` and never free text. Expiry is a pg-boss **schedule** (`bookings.expire`, every minute, UTC) whose handler calls `BookingExpiryService.expireDue(now)`; each overdue booking is handled in its own status-conditioned transaction, so the job is idempotent and tests drive it with an explicit `now` instead of sleeping. A provider acting on an overdue request triggers the same expiry lazily (`410 REQUEST_EXPIRED`). Timer lengths and the reveal stage are read from `platform_settings` (`provider_response_hours`, `payment_window_hours`, `no_show_grace_hours`, `contact_reveal_stage`) with validation, a 60-second cache and seeded defaults as fallback.
+**Alternatives.** Per-booking delayed jobs — one job per booking plus cancellation bookkeeping on every transition; database `pg_cron` — not available on all hosts; hard-coded timers — would need a deploy to change.
+**Consequences.** The worker process now needs the database (`WorkerModule` imports `DatabaseModule` and `BookingsCoreModule`); the sweep can lag by up to a minute, which the lazy path covers for provider actions.
 
 ---
 

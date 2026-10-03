@@ -87,35 +87,37 @@ Without `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` the API generates an ephemeral signin
 
 Root `.env` (copied from [`.env.example`](.env.example)) is read by Docker Compose defaults, the database scripts, the API and the worker:
 
-| Variable                                                                                                    | Default                                                           | Used by                            |
-| ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DB_PORT`                                           | `postgres` / `postgres` / `vehicle_rental` / `5432`               | Docker Compose                     |
-| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT`                                                                     | `1025` / `8025`                                                   | Docker Compose                     |
-| `MINIO_PORT` / `MINIO_CONSOLE_PORT` / `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`                             | `9000` / `9001` / `minioadmin` / `minioadmin`                     | Docker Compose (dev only)          |
-| `DATABASE_URL`                                                                                              | `postgresql://postgres:postgres@localhost:5432/vehicle_rental`    | database scripts, API, worker      |
-| `DATABASE_URL_TEST`                                                                                         | `…/vehicle_rental_test`                                           | automated tests                    |
-| `NODE_ENV`                                                                                                  | `development`                                                     | API, worker                        |
-| `API_PORT` / `API_HOST`                                                                                     | `4000` / `0.0.0.0`                                                | API                                |
-| `CORS_ORIGINS`                                                                                              | `http://localhost:3000`                                           | API (CORS and CSRF origin check)   |
-| `WEB_APP_URL`                                                                                               | `http://localhost:3000`                                           | API (links in e-mails)             |
-| `LOG_LEVEL`                                                                                                 | `debug`                                                           | API, worker                        |
-| `RATE_LIMIT_TTL_SECONDS` / `RATE_LIMIT_MAX`                                                                 | `60` / `300`                                                      | API                                |
-| `AUTH_LOGIN_LIMIT_PER_MINUTE` / `AUTH_SENSITIVE_LIMIT_PER_15MIN` / `AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN` | `10` / `5` / `3`                                                  | API                                |
-| `JWT_ISSUER` / `JWT_AUDIENCE`                                                                               | `vrp-api` / `vrp`                                                 | API                                |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                                                                        | _(unset → ephemeral pair; required in production)_                | API                                |
-| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS`                                                       | `900` / `30`                                                      | API                                |
-| `COOKIE_SECURE` / `COOKIE_DOMAIN`                                                                           | _(secure in production)_ / _(unset)_                              | API                                |
-| `EMAIL_VERIFICATION_TTL_HOURS` / `PASSWORD_RESET_TTL_MINUTES`                                               | `24` / `30`                                                       | API                                |
-| `ARGON2_MEMORY_KIB` / `ARGON2_TIME_COST`                                                                    | `65536` / `3`                                                     | API                                |
-| `EMAIL_PROVIDER`                                                                                            | `smtp` (`memory` for tests)                                       | API, worker                        |
-| `EMAIL_FROM` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`                        | Mailpit defaults                                                  | worker                             |
-| `OPENAPI_ENABLED`                                                                                           | `true` outside production                                         | API                                |
-| `PGBOSS_SCHEMA`                                                                                             | `pgboss`                                                          | API, worker                        |
-| `OPERATOR_NOTIFICATION_EMAIL`                                                                               | _(unset → no operator notice)_                                    | API (e-mail on application submit) |
-| `STORAGE_PROVIDER` / `STORAGE_ENDPOINT` / `STORAGE_REGION`                                                  | `s3` / `http://localhost:9000` / `us-east-1`                      | API (photos; `memory` in tests)    |
-| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`                                                                 | `minioadmin` / `minioadmin` (refused in production)               | API                                |
-| `STORAGE_BUCKET_PRIVATE` / `STORAGE_BUCKET_PUBLIC` / `STORAGE_PUBLIC_URL`                                   | `vrp-private` / `vrp-public` / `http://localhost:9000/vrp-public` | API (variant URLs)                 |
-| `STORAGE_FORCE_PATH_STYLE` / `STORAGE_AUTO_CREATE_BUCKETS`                                                  | `true` / `true` outside production                                | API                                |
+| Variable                                                                                                    | Default                                                            | Used by                            |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DB_PORT`                                           | `postgres` / `postgres` / `vehicle_rental` / `5432`                | Docker Compose                     |
+| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT`                                                                     | `1025` / `8025`                                                    | Docker Compose                     |
+| `MINIO_PORT` / `MINIO_CONSOLE_PORT` / `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`                             | `9000` / `9001` / `minioadmin` / `minioadmin`                      | Docker Compose (dev only)          |
+| `DATABASE_URL`                                                                                              | `postgresql://postgres:postgres@localhost:5432/vehicle_rental`     | database scripts, API, worker      |
+| `DATABASE_URL_TEST`                                                                                         | `…/vehicle_rental_test`                                            | automated tests                    |
+| `NODE_ENV`                                                                                                  | `development`                                                      | API, worker                        |
+| `API_PORT` / `API_HOST`                                                                                     | `4000` / `0.0.0.0`                                                 | API                                |
+| `CORS_ORIGINS`                                                                                              | `http://localhost:3000`                                            | API (CORS and CSRF origin check)   |
+| `WEB_APP_URL`                                                                                               | `http://localhost:3000`                                            | API (links in e-mails)             |
+| `LOG_LEVEL`                                                                                                 | `debug`                                                            | API, worker                        |
+| `RATE_LIMIT_TTL_SECONDS` / `RATE_LIMIT_MAX`                                                                 | `60` / `300`                                                       | API                                |
+| `AUTH_LOGIN_LIMIT_PER_MINUTE` / `AUTH_SENSITIVE_LIMIT_PER_15MIN` / `AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN` | `10` / `5` / `3`                                                   | API                                |
+| `JWT_ISSUER` / `JWT_AUDIENCE`                                                                               | `vrp-api` / `vrp`                                                  | API                                |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                                                                        | _(unset → ephemeral pair; required in production)_                 | API                                |
+| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS`                                                       | `900` / `30`                                                       | API                                |
+| `COOKIE_SECURE` / `COOKIE_DOMAIN`                                                                           | _(secure in production)_ / _(unset)_                               | API                                |
+| `EMAIL_VERIFICATION_TTL_HOURS` / `PASSWORD_RESET_TTL_MINUTES`                                               | `24` / `30`                                                        | API                                |
+| `ARGON2_MEMORY_KIB` / `ARGON2_TIME_COST`                                                                    | `65536` / `3`                                                      | API                                |
+| `EMAIL_PROVIDER`                                                                                            | `smtp` (`memory` for tests)                                        | API, worker                        |
+| `EMAIL_FROM` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`                        | Mailpit defaults                                                   | worker                             |
+| `OPENAPI_ENABLED`                                                                                           | `true` outside production                                          | API                                |
+| `PGBOSS_SCHEMA`                                                                                             | `pgboss`                                                           | API, worker                        |
+| `OPERATOR_NOTIFICATION_EMAIL`                                                                               | _(unset → no operator notice)_                                     | API (e-mail on application submit) |
+| `STORAGE_PROVIDER` / `STORAGE_ENDPOINT` / `STORAGE_REGION`                                                  | `s3` / `http://localhost:9000` / `us-east-1`                       | API (photos; `memory` in tests)    |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`                                                                 | `minioadmin` / `minioadmin` (refused in production)                | API                                |
+| `STORAGE_BUCKET_PRIVATE` / `STORAGE_BUCKET_PUBLIC` / `STORAGE_PUBLIC_URL`                                   | `vrp-private` / `vrp-public` / `http://localhost:9000/vrp-public`  | API (variant URLs)                 |
+| `STORAGE_FORCE_PATH_STYLE` / `STORAGE_AUTO_CREATE_BUCKETS`                                                  | `true` / `true` outside production                                 | API                                |
+| `BOOKING_QUOTE_SECRET`                                                                                      | _(unset → per-process secret; required in production, ≥ 32 chars)_ | API (signed quote tokens)          |
+| `BOOKING_QUOTE_TTL_MINUTES`                                                                                 | `15`                                                               | API                                |
 
 `apps/web/.env.local` (copied from [`apps/web/.env.example`](apps/web/.env.example)):
 
@@ -169,9 +171,21 @@ Phase 5 adds the customer side without any paid service: MinIO (local S3-compati
 2. **Approval assigns a public slug** (`toyota-aqua-2018-mirissa-ab12`).
 3. **Search.** `/` → `/search` calls `GET /vehicles/search`: only approved listings of active providers at active locations with 3+ photos; with dates, only vehicles with no overlapping `vehicle_holds` and whose min/max rental days fit. Place search uses the gazetteer centre and PostGIS radius; results carry a distance and an **estimated** total (listed rates only; not a booking quote).
 4. **Public listing page** `/vehicles/[slug]` is server-rendered with gallery, specs, pricing, rules, provider summary and an **approximate** map point (pin snapped to ~550 m or the town centre). Exact addresses, pickup instructions, plates and provider contact details are never public.
-5. Booking, payment and the quote engine do not exist yet; the page says so.
+5. Payment does not exist yet; booking requests do (next section).
 
 Try it: approve a listing with photos, then open <http://localhost:3000/search> and the listing's public page.
+
+## Bookings (local)
+
+Phase 6 is the lean request-to-book loop **without payment** (TECH_DECISIONS D48–D52). Nothing is charged; the vehicle is reserved only when the provider accepts.
+
+1. **Request.** On a listing page pick dates → **Check price and availability** (`GET /vehicles/{slug}/quote`, a signed 15-minute price token) → **Request to book** → `/bookings/new` (log in if needed; the dates survive the redirect) → driver name, licence country and expiry, optional message → **Send booking request** (`POST /bookings` with an `Idempotency-Key`). The booking is `requested`; both parties get an e-mail (Mailpit). Several customers may request the same dates.
+2. **Provider inbox.** `/provider/bookings` → open the request → **Accept** (reserves the dates: a `kind = booking` row in `vehicle_holds`, created in one transaction; overlapping requests are declined automatically) or **Decline** with a reason. Requests not answered within 24 h (`platform_settings.provider_response_hours`) expire — run the worker (`pnpm dev:worker`) for the minute-by-minute sweep.
+3. **Confirmation (temporary).** Online payment arrives in Phase 7. Until then an administrator opens `/admin/bookings/[id]` and presses **Confirm for testing (no payment)** (`POST /admin/bookings/{id}/confirm-for-testing`; refused when `NODE_ENV=production`). Both sides are e-mailed; the customer now sees the exact pickup address and can reveal the provider's phone / e-mail / WhatsApp link, and vice versa. An accepted booking that is not confirmed within 24 h (`payment_window_hours`) expires and frees the dates.
+4. **Pickup and return.** The provider records the handover (odometer, fuel, note → `active`) and later the return (→ `completed`; the hold stays as history). After the pickup time plus 3 h a confirmed booking can be marked **no-show**.
+5. **Cancellation.** Customers can cancel while requested / accepted / confirmed, providers while accepted / confirmed; the hold is released immediately. There are no fees or refunds in this release.
+
+Everything a booking goes through is visible in its timeline (`booking_events`, append-only) on all three booking pages.
 
 ## Database workflow
 
@@ -200,6 +214,8 @@ Phase 3 e2e suites (`provider-application`, `admin-provider-review`, `admin-boot
 Phase 4 suites (`provider-locations`, `provider-vehicles`, `admin-vehicle-review`, `vehicle-availability`) build on the same helpers; the availability suite also fires two concurrent inserts at the `vehicle_holds` exclusion constraint to prove overlaps cannot both succeed.
 
 Phase 5 suites: `vehicle-photos` (real images generated with sharp, EXIF stripping, variants, limits, ownership — against the in-memory storage provider) and `public-search` (searchable condition, filters, PostGIS radius, holds, boundaries, pagination, sorting, slug detail, place suggest and a privacy scan of the raw JSON). The real MinIO path is exercised by the Phase 5 smoke test.
+
+Phase 6 suites: `bookings` (quotes and tokens, request creation without a hold, validation of client prices / dates / stale quotes, idempotency incl. three parallel identical requests, accept with auto-decline, privacy and access scoping, the admin testing confirmation, contact reveal, pickup / return, decline, cancellation, expiry with an injected clock, no-show, lists, OpenAPI, the append-only trigger) and `bookings-concurrency` (parallel accepts, triple-click, accept vs concurrent block, block before accept, adjacent half-open windows, re-use after cancellation — all as real parallel HTTP requests against the database). Unit tests cover the state machine, the quote token service, booking references and the e-mail templates. E-mail assertions use `takeAllEmails` + `findEmail` when one action mails several recipients (the queue is FIFO and `takeEmailFor` drains it).
 
 ## Continuous integration
 

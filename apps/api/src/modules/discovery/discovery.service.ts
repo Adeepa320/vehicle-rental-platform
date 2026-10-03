@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   DEFAULT_SEARCH_RADIUS_KM,
-  MIN_VEHICLE_PHOTOS,
   rentalDays,
   type PlaceSuggestion,
   type PublicAvailability,
@@ -20,25 +19,11 @@ import {
   providerProfiles,
   vehicleCategories,
   vehicleHolds,
-  vehiclePhotos,
   vehicles,
   type Database,
   type GeoPoint,
 } from '@vrp/database';
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gte,
-  ilike,
-  isNotNull,
-  isNull,
-  lte,
-  or,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import { ApiException } from '../../common/errors/api.exception';
 import { DATABASE } from '../../database/database.module';
@@ -51,6 +36,7 @@ import {
   toPublicPricing,
   type SearchWindow,
 } from './public.mappers';
+import { searchableCondition } from './searchable';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Sort value for vehicles without a pin when sorting by distance (after every real distance). */
@@ -330,18 +316,9 @@ export class DiscoveryService {
 
   // ------------------------------------------------------------- helpers
 
-  /** Everything a listing must satisfy to be visible to customers (DoD: "searchable condition"). */
+  /** Everything a listing must satisfy to be visible to customers (shared with quotes and bookings). */
   private searchable(): SQL {
-    return and(
-      eq(vehicles.status, 'approved'),
-      isNull(vehicles.deletedAt),
-      isNotNull(vehicles.slug),
-      eq(providerProfiles.status, 'active'),
-      isNull(providerProfiles.deletedAt),
-      eq(providerLocations.isActive, true),
-      eq(vehicleCategories.isActive, true),
-      sql`(select count(*) from ${vehiclePhotos} ph where ph.vehicle_id = ${vehicles.id} and ph.deleted_at is null) >= ${MIN_VEHICLE_PHOTOS}`,
-    ) as SQL;
+    return searchableCondition();
   }
 
   /** No hold intersects the half-open window `[start, end)`. */

@@ -99,6 +99,12 @@ export const envSchema = z
     /** Create buckets and the public-read policy at startup. Defaults to true outside production. */
     STORAGE_AUTO_CREATE_BUCKETS: booleanString.optional(),
 
+    // ---- bookings (Phase 6) ----
+    /** HMAC secret for signed quote tokens (≥ 32 chars). Required in production; a per-process secret is generated otherwise. */
+    BOOKING_QUOTE_SECRET: z.string().min(32).optional(),
+    /** How long a quoted price can be used to create a booking request (PRD FR-PR3: 15 minutes). */
+    BOOKING_QUOTE_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(15),
+
     // ---- developer tooling ----
     /** Serve Swagger UI at /api/docs. Defaults to true outside production. */
     OPENAPI_ENABLED: booleanString.optional(),
@@ -110,6 +116,13 @@ export const envSchema = z
           code: 'custom',
           path: ['JWT_PRIVATE_KEY'],
           message: 'JWT_PRIVATE_KEY and JWT_PUBLIC_KEY are required in production',
+        });
+      }
+      if (!env.BOOKING_QUOTE_SECRET) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['BOOKING_QUOTE_SECRET'],
+          message: 'BOOKING_QUOTE_SECRET is required in production',
         });
       }
       if (env.EMAIL_PROVIDER === 'memory') {

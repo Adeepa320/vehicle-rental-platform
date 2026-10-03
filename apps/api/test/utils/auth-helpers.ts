@@ -43,27 +43,49 @@ export async function registerUser(
 }
 
 /**
+ * Drains every queued e-mail job (completing it) and returns the messages in
+ * queue order. Use this when one action produces mail for several recipients.
+ */
+export async function takeAllEmails(app: INestApplicationContext): Promise<EmailMessage[]> {
+  const jobs = app.get(JobsService);
+  const messages: EmailMessage[] = [];
+  // The queue is FIFO and may hold leftovers from earlier suites; keep fetching until empty.
+  for (let round = 0; round < 50; round += 1) {
+    const batch = await jobs.fetch<EmailMessage>(QUEUES.emailSend, 100);
+    if (batch.length === 0) break;
+    await jobs.queue.complete(
+      QUEUES.emailSend,
+      batch.map((job) => job.id),
+    );
+    messages.push(...batch.map((job) => job.data));
+    if (batch.length < 100) break;
+  }
+  return messages;
+}
+
+/** Latest message in `messages` addressed to `to` (optionally with `subjectContains`). */
+export function findEmail(
+  messages: EmailMessage[],
+  to: string,
+  subjectContains?: string,
+): EmailMessage | undefined {
+  return messages
+    .filter((m) => m.to.toLowerCase() === to.toLowerCase())
+    .filter((m) => (subjectContains ? m.subject.includes(subjectContains) : true))
+    .at(-1);
+}
+
+/**
  * Drains queued e-mail jobs and returns the latest message addressed to
- * `to`. Jobs are completed so later calls only see new messages.
+ * `to`. Jobs are completed so later calls only see new messages — including
+ * mail to other recipients, so prefer `takeAllEmails` when several were sent.
  */
 export async function takeEmailFor(
   app: INestApplicationContext,
   to: string,
   subjectContains?: string,
 ): Promise<EmailMessage | undefined> {
-  const jobs = app.get(JobsService);
-  const batch = await jobs.fetch<EmailMessage>(QUEUES.emailSend, 100);
-  if (batch.length > 0) {
-    await jobs.queue.complete(
-      QUEUES.emailSend,
-      batch.map((job) => job.id),
-    );
-  }
-  return batch
-    .map((job) => job.data)
-    .filter((m) => m.to.toLowerCase() === to.toLowerCase())
-    .filter((m) => (subjectContains ? m.subject.includes(subjectContains) : true))
-    .at(-1);
+  return findEmail(await takeAllEmails(app), to, subjectContains);
 }
 
 export function extractToken(message: EmailMessage | undefined): string {

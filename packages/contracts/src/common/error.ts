@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 /**
- * Machine-readable error codes. Business-specific codes (BOOKING_CONFLICT,
- * QUOTE_CHANGED, ...) are added in the phases that introduce them.
+ * Machine-readable error codes. Business-specific codes are added in the
+ * phases that introduce them (booking codes: Phase 6).
  */
 export const ApiErrorCodeSchema = z.enum([
   // generic (mapped from HTTP status)
@@ -30,6 +30,15 @@ export const ApiErrorCodeSchema = z.enum([
   // catalogue & availability
   'LOCATION_IN_USE',
   'AVAILABILITY_CONFLICT',
+  // bookings
+  'BOOKING_CONFLICT',
+  'STALE_VERSION',
+  'QUOTE_CHANGED',
+  'QUOTE_EXPIRED',
+  'IDEMPOTENCY_CONFLICT',
+  'REQUEST_EXPIRED',
+  'CONTACT_NOT_AVAILABLE_YET',
+  'GRACE_PERIOD_NOT_ELAPSED',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

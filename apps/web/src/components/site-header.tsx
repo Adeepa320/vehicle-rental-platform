@@ -56,6 +56,9 @@ export function SiteHeader() {
             <span className="text-muted-foreground">…</span>
           ) : status === 'authenticated' && user ? (
             <>
+              <Button variant="ghost" nativeButton={false} render={<Link href="/bookings" />}>
+                My bookings
+              </Button>
               <Button variant="ghost" nativeButton={false} render={<Link href="/account" />}>
                 {user.fullName}
               </Button>

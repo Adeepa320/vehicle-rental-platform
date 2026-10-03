@@ -78,6 +78,27 @@
       "when": 1791051331390,
       "tag": "0010_vehicle_photos_and_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791055908324,
+      "tag": "0011_bookings",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791055968130,
+      "tag": "0012_bookings_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791058258407,
+      "tag": "0013_booking_events_actor_null",
+      "breakpoints": true
     }
   ]
 }

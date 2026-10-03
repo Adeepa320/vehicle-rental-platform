@@ -7,6 +7,7 @@ import type {
 } from '@vrp/contracts';
 import {
   vehicleHolds,
+  vehicles,
   type Database,
   type DatabaseExecutor,
   type ProviderProfile,
@@ -18,7 +19,7 @@ import { ApiException } from '../../common/errors/api.exception';
 import { DATABASE } from '../../database/database.module';
 import { AuditService } from '../audit/audit.service';
 import type { RequestMeta } from '../auth/auth.types';
-import { isExclusionViolation } from '../catalogue/catalogue.helpers';
+import { isDeadlock, isExclusionViolation } from '../catalogue/catalogue.helpers';
 import { toHold } from '../catalogue/vehicle.mappers';
 import { BLOCKABLE_STATUSES, isBookable } from '../catalogue/vehicle.state';
 import { VehiclesService } from '../catalogue/vehicles.service';
@@ -105,6 +106,14 @@ export class AvailabilityService {
     }
 
     return this.db.transaction(async (tx) => {
+      // Every hold writer (manual blocks here, booking acceptance in the booking
+      // module) locks the vehicle row first, so competing writers serialise on it
+      // instead of deadlocking on each other's uncommitted index entries.
+      await tx
+        .select({ id: vehicles.id })
+        .from(vehicles)
+        .where(eq(vehicles.id, vehicleId))
+        .for('update');
       const conflicts = await this.overlapping(tx, vehicleId, startsAt, endsAt);
       if (conflicts.length > 0) throw this.conflict(conflicts);
 
@@ -124,7 +133,7 @@ export class AvailabilityService {
           .returning();
       } catch (error) {
         // Lost a race with a concurrent insert: the constraint did its job.
-        if (isExclusionViolation(error)) throw this.conflict([]);
+        if (isExclusionViolation(error) || isDeadlock(error)) throw this.conflict([]);
         throw error;
       }
       if (!row) throw new Error('Failed to create availability block');

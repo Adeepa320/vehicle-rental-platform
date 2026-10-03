@@ -102,6 +102,12 @@ export class JobsService implements OnApplicationShutdown {
     this.logger.info({ queue: name }, 'Job handler registered');
   }
 
+  /** Registers (or updates) a cron schedule for a queue (worker only; UTC). */
+  async schedule(name: QueueName, cron: string): Promise<void> {
+    await this.queue.schedule(name, cron, {}, { tz: 'UTC' });
+    this.logger.info({ queue: name, cron }, 'Job schedule registered');
+  }
+
   /** Fetches up to `batchSize` pending jobs without a handler; used by tests and tooling. */
   async fetch<T>(name: QueueName, batchSize = 10): Promise<Job<T>[]> {
     await this.start('api');

@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 
 import { JobsService } from './jobs/jobs.service';
+import { BookingExpiryService } from './modules/bookings/booking-expiry.service';
+import { registerBookingJobs } from './modules/bookings/booking-expiry.worker';
 import { EmailService } from './modules/notifications/email/email.service';
 import { registerEmailJobs } from './modules/notifications/email/email.worker';
 import { WorkerModule } from './worker.module';
@@ -23,6 +25,7 @@ async function bootstrap(): Promise<void> {
   const jobs = app.get(JobsService);
   await jobs.start('worker');
   await registerEmailJobs(jobs, app.get(EmailService));
+  await registerBookingJobs(jobs, app.get(BookingExpiryService));
   logger.log(`Worker ready; registered job handlers: ${jobs.registeredJobNames.join(', ')}`);
 }
 

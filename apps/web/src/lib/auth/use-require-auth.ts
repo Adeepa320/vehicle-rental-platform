@@ -20,7 +20,9 @@ export function useRequireAuth(role?: UserRole): RequireAuthState {
 
   useEffect(() => {
     if (status === 'anonymous') {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      // Keep the query string (e.g. the chosen vehicle and dates) so the user lands back where they were.
+      const search = typeof window === 'undefined' ? '' : window.location.search;
+      router.replace(`/login?next=${encodeURIComponent(`${pathname}${search}`)}`);
     }
   }, [pathname, router, status]);
 

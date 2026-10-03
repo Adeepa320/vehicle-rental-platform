@@ -9,6 +9,7 @@ const LINKS = [
   { href: '/provider/dashboard', label: 'Dashboard' },
   { href: '/provider/locations', label: 'Locations' },
   { href: '/provider/vehicles', label: 'Vehicles' },
+  { href: '/provider/bookings', label: 'Bookings' },
 ];
 
 /** Sub-navigation for the provider area. */

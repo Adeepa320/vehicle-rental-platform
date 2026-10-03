@@ -22,6 +22,16 @@ export function isExclusionViolation(error: unknown): boolean {
   return candidate?.code === '23P01' || candidate?.cause?.code === '23P01';
 }
 
+/**
+ * PostgreSQL `deadlock_detected` (40P01), possibly wrapped by Drizzle. Hold
+ * writers lock the vehicle row first so this should not happen between them;
+ * if it ever does, the loser is reported as a conflict rather than a crash.
+ */
+export function isDeadlock(error: unknown): boolean {
+  const candidate = error as { code?: unknown; cause?: { code?: unknown } } | undefined;
+  return candidate?.code === '40P01' || candidate?.cause?.code === '40P01';
+}
+
 /** Display name for a vehicle in messages, even for sparse drafts. */
 export function vehicleLabel(row: Pick<Vehicle, 'title' | 'make' | 'model' | 'modelYear'>): string {
   if (row.title) return row.title;

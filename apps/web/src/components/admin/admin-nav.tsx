@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 const LINKS = [
   { href: '/admin/providers', label: 'Providers' },
   { href: '/admin/vehicles', label: 'Vehicles' },
+  { href: '/admin/bookings', label: 'Bookings' },
 ];
 
 /** Sub-navigation for the admin area. */

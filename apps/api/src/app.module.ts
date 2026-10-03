@@ -14,6 +14,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -62,6 +63,7 @@ import { UsersModule } from './modules/users/users.module';
     CatalogueModule,
     AvailabilityModule,
     DiscoveryModule,
+    BookingsModule,
     AdminModule,
   ],
   providers: [

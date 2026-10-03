@@ -1,4 +1,6 @@
 import {
+  AdminBookingListSchema,
+  AdminBookingSchema,
   AdminProviderApplicationListSchema,
   AdminProviderApplicationSchema,
   AdminProviderDetailSchema,
@@ -7,6 +9,10 @@ import {
   AdminVehicleSchema,
   ApiErrorSchema,
   AuthSessionResponseSchema,
+  BookingContactSchema,
+  BookingListSchema,
+  BookingQuoteSchema,
+  BookingSchema,
   DistrictSchema,
   HealthResponseSchema,
   MessageResponseSchema,
@@ -30,6 +36,9 @@ import {
   VehicleSchema,
   VehicleSearchResponseSchema,
   VerifyEmailResponseSchema,
+  type AcceptBookingRequest,
+  type AdminBooking,
+  type AdminBookingList,
   type AdminProviderApplication,
   type AdminProviderApplicationList,
   type AdminProviderDetail,
@@ -38,13 +47,25 @@ import {
   type AdminVehicleList,
   type ApiErrorDetail,
   type AuthSessionResponse,
+  type Booking,
+  type BookingContact,
+  type BookingList,
+  type BookingQuote,
+  type BookingScope,
+  type BookingStatus,
+  type CancelBookingRequest,
+  type ConfirmBookingForTestingRequest,
   type CreateAvailabilityBlockRequest,
+  type CreateBookingRequest,
   type CreateProviderLocationRequest,
   type CreateVehicleRequest,
+  type DeclineBookingRequest,
   type District,
+  type HandoverRequest,
   type HealthResponse,
   type LoginRequest,
   type MessageResponse,
+  type NoShowBookingRequest,
   type PlaceSuggestion,
   type PlaceSummary,
   type ProviderApplication,
@@ -104,6 +125,8 @@ interface RequestOptions {
   formData?: FormData;
   query?: QueryParams;
   accessToken?: string;
+  /** Extra request headers (e.g. `Idempotency-Key`). */
+  headers?: Record<string, string>;
   /** Non-2xx statuses whose body is still parsed with the success schema (e.g. 503 for /ready). */
   allowStatuses?: number[];
   /** Send and accept the HttpOnly refresh cookie (auth endpoints only). */
@@ -138,6 +161,7 @@ export function createApiClient(options: ApiClientOptions) {
         accept: 'application/json',
         ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
         ...(opts.accessToken ? { authorization: `Bearer ${opts.accessToken}` } : {}),
+        ...(opts.headers ?? {}),
       },
       ...(opts.body !== undefined
         ? { body: JSON.stringify(opts.body) }
@@ -271,6 +295,95 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       suggestPlaces: (q: string, limit = 8): Promise<PlaceSuggestion[]> =>
         request('/places/suggest', z.array(PlaceSuggestionSchema), { query: { q, limit } }),
+      /** Price for a window plus a signed quote token when the vehicle is bookable. */
+      quote: (slug: string, startsAt: string, endsAt: string): Promise<BookingQuote> =>
+        request(`/vehicles/${encodeURIComponent(slug)}/quote`, BookingQuoteSchema, {
+          query: { startsAt, endsAt },
+        }),
+    },
+
+    /** Customer side of bookings (plus the participant-aware detail/contact routes). */
+    bookings: {
+      /** `idempotencyKey` must be unique per request attempt and reused on retries of the same attempt. */
+      create: (
+        accessToken: string,
+        body: CreateBookingRequest,
+        idempotencyKey: string,
+      ): Promise<Booking> =>
+        request('/bookings', BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+          headers: { 'idempotency-key': idempotencyKey },
+        }),
+      list: (
+        accessToken: string,
+        query: {
+          scope?: BookingScope;
+          status?: BookingStatus;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<BookingList> => request('/bookings', BookingListSchema, { accessToken, query }),
+      get: (accessToken: string, id: string): Promise<Booking> =>
+        request(`/bookings/${id}`, BookingSchema, withToken(accessToken)),
+      cancel: (accessToken: string, id: string, body: CancelBookingRequest): Promise<Booking> =>
+        request(`/bookings/${id}/cancel`, BookingSchema, { method: 'POST', body, accessToken }),
+      contact: (accessToken: string, id: string): Promise<BookingContact> =>
+        request(`/bookings/${id}/contact`, BookingContactSchema, withToken(accessToken)),
+    },
+
+    /** Provider inbox and transitions on bookings of the caller's vehicles. */
+    providerBookings: {
+      list: (
+        accessToken: string,
+        query: {
+          scope?: BookingScope;
+          status?: BookingStatus;
+          vehicleId?: string;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<BookingList> =>
+        request('/providers/me/bookings', BookingListSchema, { accessToken, query }),
+      get: (accessToken: string, id: string): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}`, BookingSchema, withToken(accessToken)),
+      accept: (accessToken: string, id: string, body: AcceptBookingRequest): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}/accept`, BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      decline: (accessToken: string, id: string, body: DeclineBookingRequest): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}/decline`, BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      cancel: (accessToken: string, id: string, body: CancelBookingRequest): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}/cancel`, BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      pickup: (accessToken: string, id: string, body: HandoverRequest): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}/pickup`, BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      complete: (accessToken: string, id: string, body: HandoverRequest): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}/return`, BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      noShow: (accessToken: string, id: string, body: NoShowBookingRequest): Promise<Booking> =>
+        request(`/providers/me/bookings/${id}/no-show`, BookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
     },
 
     providers: {
@@ -538,6 +651,32 @@ export function createApiClient(options: ApiClientOptions) {
           body: Object.fromEntries(
             Object.entries(body).filter(([, v]) => v !== undefined && v !== ''),
           ),
+          accessToken,
+        }),
+
+      listBookings: (
+        accessToken: string,
+        query: {
+          status?: BookingStatus;
+          providerId?: string;
+          customerId?: string;
+          reference?: string;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<AdminBookingList> =>
+        request('/admin/bookings', AdminBookingListSchema, { accessToken, query }),
+      getBooking: (accessToken: string, id: string): Promise<AdminBooking> =>
+        request(`/admin/bookings/${id}`, AdminBookingSchema, withToken(accessToken)),
+      /** Temporary Phase 6 bridge; the API refuses it in production. */
+      confirmBookingForTesting: (
+        accessToken: string,
+        id: string,
+        body: ConfirmBookingForTestingRequest,
+      ): Promise<AdminBooking> =>
+        request(`/admin/bookings/${id}/confirm-for-testing`, AdminBookingSchema, {
+          method: 'POST',
+          body,
           accessToken,
         }),
     },

@@ -12,10 +12,12 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 import { uuidv7 } from '../ids';
 import { auditColumns, geographyPoint } from './_types';
+import { bookings } from './bookings';
 import { districts } from './districts';
 import { places } from './places';
 import { providerProfiles } from './providers';
@@ -187,11 +189,12 @@ export type NewVehicle = typeof vehicles.$inferInsert;
 export type VehicleStatus = (typeof vehicleStatus.enumValues)[number];
 
 /**
- * Single source of truth for unavailability (DATABASE_DESIGN §6.6). Phase 4
- * writes only `kind = 'block'` rows (provider manual blocks); booking holds and
- * the `booking_id` foreign key arrive with the booking phase. The period is the
- * half-open `[starts_at, ends_at)`; a custom migration adds the exclusion
- * constraint `EXCLUDE USING gist (vehicle_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)`
+ * Single source of truth for unavailability (DATABASE_DESIGN §6.6). Provider
+ * manual blocks (`kind = 'block'`, Phase 4) and booking holds (`kind =
+ * 'booking'`, Phase 6: one row per accepted booking, created inside the accept
+ * transaction) share this table. The period is the half-open
+ * `[starts_at, ends_at)`; a custom migration adds the exclusion constraint
+ * `EXCLUDE USING gist (vehicle_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)`
  * so overlapping holds are impossible regardless of code path (TECH_DECISIONS D14).
  */
 export const vehicleHolds = pgTable(
@@ -206,8 +209,10 @@ export const vehicleHolds = pgTable(
     startsAt: timestamp('starts_at', tz).notNull(),
     endsAt: timestamp('ends_at', tz).notNull(),
     kind: holdKind('kind').notNull(),
-    /** Foreign key to `bookings` is added when that table exists. */
-    bookingId: uuid('booking_id'),
+    /** The booking this hold belongs to (`kind = 'booking'`); at most one hold per booking. */
+    bookingId: uuid('booking_id').references((): AnyPgColumn => bookings.id, {
+      onDelete: 'cascade',
+    }),
     blockReason: blockReason('block_reason'),
     note: text('note'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
@@ -215,6 +220,9 @@ export const vehicleHolds = pgTable(
   },
   (t) => [
     index('vehicle_holds_vehicle_period_idx').on(t.vehicleId, t.startsAt, t.endsAt),
+    uniqueIndex('vehicle_holds_booking_id_key')
+      .on(t.bookingId)
+      .where(sql`${t.bookingId} is not null`),
     check('vehicle_holds_period_check', sql`${t.endsAt} > ${t.startsAt}`),
     check(
       'vehicle_holds_kind_consistency',
