@@ -50,11 +50,15 @@ pnpm dev
 
 # 5. In a second terminal, run the worker that delivers e-mails
 pnpm dev:worker
+
+# 6. (Optional) make an existing, verified account an administrator
+pnpm admin:grant --email you@example.com
 ```
 
 Then:
 
 - <http://localhost:3000> — status page; **Create account** → check the Mailpit inbox at <http://localhost:8025> → open the verification link → log in → **Account**.
+- **Become a provider** → `/provider/application` → save and submit → as an admin, review at `/admin/providers` → approve → the applicant sees `/provider/dashboard`. See "Provider onboarding flow" below.
 - <http://localhost:4000/api/docs> — Swagger UI generated from the shared Zod contracts (`/api/docs-json` for the document).
 - `GET /api/v1/health` (liveness) and `GET /api/v1/ready` (readiness: database, PostGIS, migrations).
 
@@ -62,47 +66,49 @@ Without `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` the API generates an ephemeral signin
 
 ## Everyday commands
 
-| Command                                        | What it does                                                             |
-| ---------------------------------------------- | ------------------------------------------------------------------------ |
-| `pnpm dev`                                     | Web + API in watch mode (Turborepo)                                      |
-| `pnpm dev:worker`                              | Worker process (pg-boss queue; delivers `email.send` jobs)               |
-| `pnpm build`                                   | Production builds for every package and app                              |
-| `pnpm lint` / `pnpm typecheck` / `pnpm test`   | Quality gates (run before handing over work)                             |
-| `pnpm check`                                   | lint + typecheck + test + build in one go                                |
-| `pnpm format` / `pnpm format:check`            | Prettier                                                                 |
-| `pnpm db:up` / `pnpm db:down` / `pnpm db:logs` | Manage the Docker services                                               |
-| `pnpm db:migrate`                              | Apply pending SQL migrations to `DATABASE_URL`                           |
-| `pnpm db:seed`                                 | Idempotent reference-data seed (districts, places, categories, settings) |
-| `pnpm db:generate`                             | Generate a new migration from schema changes (see below)                 |
-| `pnpm --filter @vrp/api keys:generate`         | Print an Ed25519 key pair for `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`       |
+| Command                                           | What it does                                                                                   |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `pnpm dev`                                        | Web + API in watch mode (Turborepo)                                                            |
+| `pnpm dev:worker`                                 | Worker process (pg-boss queue; delivers `email.send` jobs)                                     |
+| `pnpm admin:grant --email <email> [--role admin]` | Grant `admin` (or `super_admin`) to an existing, active, verified user; audited and idempotent |
+| `pnpm build`                                      | Production builds for every package and app                                                    |
+| `pnpm lint` / `pnpm typecheck` / `pnpm test`      | Quality gates (run before handing over work)                                                   |
+| `pnpm check`                                      | lint + typecheck + test + build in one go                                                      |
+| `pnpm format` / `pnpm format:check`               | Prettier                                                                                       |
+| `pnpm db:up` / `pnpm db:down` / `pnpm db:logs`    | Manage the Docker services                                                                     |
+| `pnpm db:migrate`                                 | Apply pending SQL migrations to `DATABASE_URL`                                                 |
+| `pnpm db:seed`                                    | Idempotent reference-data seed (districts, places, categories, settings)                       |
+| `pnpm db:generate`                                | Generate a new migration from schema changes (see below)                                       |
+| `pnpm --filter @vrp/api keys:generate`            | Print an Ed25519 key pair for `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                             |
 
 ## Environment variables
 
 Root `.env` (copied from [`.env.example`](.env.example)) is read by Docker Compose defaults, the database scripts, the API and the worker:
 
-| Variable                                                                                                    | Default                                                        | Used by                          |
-| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------- |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DB_PORT`                                           | `postgres` / `postgres` / `vehicle_rental` / `5432`            | Docker Compose                   |
-| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT`                                                                     | `1025` / `8025`                                                | Docker Compose                   |
-| `DATABASE_URL`                                                                                              | `postgresql://postgres:postgres@localhost:5432/vehicle_rental` | database scripts, API, worker    |
-| `DATABASE_URL_TEST`                                                                                         | `…/vehicle_rental_test`                                        | automated tests                  |
-| `NODE_ENV`                                                                                                  | `development`                                                  | API, worker                      |
-| `API_PORT` / `API_HOST`                                                                                     | `4000` / `0.0.0.0`                                             | API                              |
-| `CORS_ORIGINS`                                                                                              | `http://localhost:3000`                                        | API (CORS and CSRF origin check) |
-| `WEB_APP_URL`                                                                                               | `http://localhost:3000`                                        | API (links in e-mails)           |
-| `LOG_LEVEL`                                                                                                 | `debug`                                                        | API, worker                      |
-| `RATE_LIMIT_TTL_SECONDS` / `RATE_LIMIT_MAX`                                                                 | `60` / `300`                                                   | API                              |
-| `AUTH_LOGIN_LIMIT_PER_MINUTE` / `AUTH_SENSITIVE_LIMIT_PER_15MIN` / `AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN` | `10` / `5` / `3`                                               | API                              |
-| `JWT_ISSUER` / `JWT_AUDIENCE`                                                                               | `vrp-api` / `vrp`                                              | API                              |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                                                                        | _(unset → ephemeral pair; required in production)_             | API                              |
-| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS`                                                       | `900` / `30`                                                   | API                              |
-| `COOKIE_SECURE` / `COOKIE_DOMAIN`                                                                           | _(secure in production)_ / _(unset)_                           | API                              |
-| `EMAIL_VERIFICATION_TTL_HOURS` / `PASSWORD_RESET_TTL_MINUTES`                                               | `24` / `30`                                                    | API                              |
-| `ARGON2_MEMORY_KIB` / `ARGON2_TIME_COST`                                                                    | `65536` / `3`                                                  | API                              |
-| `EMAIL_PROVIDER`                                                                                            | `smtp` (`memory` for tests)                                    | API, worker                      |
-| `EMAIL_FROM` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`                        | Mailpit defaults                                               | worker                           |
-| `OPENAPI_ENABLED`                                                                                           | `true` outside production                                      | API                              |
-| `PGBOSS_SCHEMA`                                                                                             | `pgboss`                                                       | API, worker                      |
+| Variable                                                                                                    | Default                                                        | Used by                            |
+| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `DB_PORT`                                           | `postgres` / `postgres` / `vehicle_rental` / `5432`            | Docker Compose                     |
+| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT`                                                                     | `1025` / `8025`                                                | Docker Compose                     |
+| `DATABASE_URL`                                                                                              | `postgresql://postgres:postgres@localhost:5432/vehicle_rental` | database scripts, API, worker      |
+| `DATABASE_URL_TEST`                                                                                         | `…/vehicle_rental_test`                                        | automated tests                    |
+| `NODE_ENV`                                                                                                  | `development`                                                  | API, worker                        |
+| `API_PORT` / `API_HOST`                                                                                     | `4000` / `0.0.0.0`                                             | API                                |
+| `CORS_ORIGINS`                                                                                              | `http://localhost:3000`                                        | API (CORS and CSRF origin check)   |
+| `WEB_APP_URL`                                                                                               | `http://localhost:3000`                                        | API (links in e-mails)             |
+| `LOG_LEVEL`                                                                                                 | `debug`                                                        | API, worker                        |
+| `RATE_LIMIT_TTL_SECONDS` / `RATE_LIMIT_MAX`                                                                 | `60` / `300`                                                   | API                                |
+| `AUTH_LOGIN_LIMIT_PER_MINUTE` / `AUTH_SENSITIVE_LIMIT_PER_15MIN` / `AUTH_TOKEN_REQUESTS_PER_USER_PER_15MIN` | `10` / `5` / `3`                                               | API                                |
+| `JWT_ISSUER` / `JWT_AUDIENCE`                                                                               | `vrp-api` / `vrp`                                              | API                                |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`                                                                        | _(unset → ephemeral pair; required in production)_             | API                                |
+| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS`                                                       | `900` / `30`                                                   | API                                |
+| `COOKIE_SECURE` / `COOKIE_DOMAIN`                                                                           | _(secure in production)_ / _(unset)_                           | API                                |
+| `EMAIL_VERIFICATION_TTL_HOURS` / `PASSWORD_RESET_TTL_MINUTES`                                               | `24` / `30`                                                    | API                                |
+| `ARGON2_MEMORY_KIB` / `ARGON2_TIME_COST`                                                                    | `65536` / `3`                                                  | API                                |
+| `EMAIL_PROVIDER`                                                                                            | `smtp` (`memory` for tests)                                    | API, worker                        |
+| `EMAIL_FROM` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`                        | Mailpit defaults                                               | worker                             |
+| `OPENAPI_ENABLED`                                                                                           | `true` outside production                                      | API                                |
+| `PGBOSS_SCHEMA`                                                                                             | `pgboss`                                                       | API, worker                        |
+| `OPERATOR_NOTIFICATION_EMAIL`                                                                               | _(unset → no operator notice)_                                 | API (e-mail on application submit) |
 
 `apps/web/.env.local` (copied from [`apps/web/.env.example`](apps/web/.env.example)):
 
@@ -123,6 +129,18 @@ Placeholders for later phases (SMS, storage, payments, field encryption, error t
 6. **Forgot password** sends a 30-minute single-use reset link; resetting signs out every session.
 
 Login is refused until the e-mail is verified (`403 EMAIL_NOT_VERIFIED`). Unknown e-mails and wrong passwords return the same `401`. Forgot-password and resend-verification always return `202`.
+
+## Provider onboarding flow (local)
+
+Phase 3 is a lean, reviewed onboarding: no SMS, no document uploads, no object storage. Verification is a manual operator check (TECH_DECISIONS D30).
+
+1. A **verified** customer opens `/become-a-provider` → `/provider/application`, fills in business, contact, operating-area and vehicle-type details (districts, places and categories come from `GET /reference/*`), saves drafts and **submits** (accepting the provider agreement). The phone number is stored but **not verified**.
+2. The applicant receives an "application received" e-mail in Mailpit. When `OPERATOR_NOTIFICATION_EMAIL` is set, that inbox gets a notice too.
+3. An **admin** — created with `pnpm admin:grant --email <user>`; the user must already exist, be active and have a verified e-mail — opens `/admin/providers`, inspects the application, calls or e-mails the applicant, then **Start review**, **Request changes** (reason shown to the applicant, who edits and resubmits), **Approve** or **Reject** (reason e-mailed).
+4. **Approve** runs in one transaction: application `approved`, `provider_profiles` row (+ service areas and categories) created, `provider` appended to `users.roles`, `audit_events` row written, e-mail queued. The provider's next request already carries the role; `/provider/dashboard` shows the "Platform-approved provider" badge.
+5. Admins can **suspend** / **reactivate** a provider from the "Approved providers" tab. A suspended provider keeps the role, but provider-only actions return `403 PROVIDER_SUSPENDED`.
+
+States: `draft → submitted → under_review → changes_requested → submitted …`; `submitted | under_review → approved | rejected` (rejected is terminal for now). Wrong-state actions return `409 INVALID_STATE_TRANSITION`. Every admin decision is audited in `audit_events`.
 
 ## Database workflow
 
@@ -146,6 +164,8 @@ TEST_LOG_LEVEL=error pnpm --filter @vrp/api test   # show API error logs while d
 
 Tests that need PostgreSQL use `DATABASE_URL_TEST` and skip with a warning when it is not set. The test database is created automatically by Docker on first start (`infra/db/init/`). E-mail in tests goes to an in-memory provider; e2e tests read queued jobs straight from the pg-boss queue (`pgboss_test` schema) to obtain verification and reset tokens.
 
+Phase 3 e2e suites (`provider-application`, `admin-provider-review`, `admin-bootstrap`, `reference`) seed the gazetteer into the test database and create admins through the same `grantRole` function the CLI uses. The web app has a small Vitest suite for its pure form/API-client logic (`pnpm --filter @vrp/web test`).
+
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs install → lint → build → typecheck → migrate + seed → test → format check against a PostGIS service container. It needs no secrets. Deployment is intentionally not configured yet (see `docs/ARCHITECTURE.md` §13 for the planned hosting).
@@ -156,5 +176,6 @@ Tests that need PostgreSQL use `DATABASE_URL_TEST` and skip with a warning when 
 - **Port 5432 / 1025 / 8025 already in use** — set `DB_PORT`, `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` in `.env` and start with `docker compose --env-file .env -f infra/docker-compose.yml up -d`, then update `DATABASE_URL*` / `SMTP_PORT`.
 - **`/ready` reports `migrations: down`** — run `pnpm db:migrate`.
 - **No verification e-mail arrives** — the worker must be running (`pnpm dev:worker`); check Mailpit at <http://localhost:8025> and the worker log.
+- **`pnpm admin:grant` refuses** — the e-mail must belong to an existing, active user whose e-mail is verified (register and verify first). Running it again for the same user is safe.
 - **"JWT_PRIVATE_KEY … not set" warning** — expected locally; generate keys with `pnpm --filter @vrp/api keys:generate` for stable tokens across restarts.
 - **Test database missing** (older Docker volume) — `docker exec vehicle-rental-db psql -U postgres -c "CREATE DATABASE vehicle_rental_test;"`.

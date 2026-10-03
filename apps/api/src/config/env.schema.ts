@@ -68,6 +68,8 @@ export const envSchema = z
     // ---- e-mail delivery ----
     /** `smtp` (Mailpit locally, any SMTP in production) or `memory` (tests). */
     EMAIL_PROVIDER: z.enum(['smtp', 'memory']).default('smtp'),
+    /** Optional operator inbox notified when a provider application is submitted. */
+    OPERATOR_NOTIFICATION_EMAIL: z.email().optional(),
     EMAIL_FROM: z.string().min(3).default('Vehicle Rental Platform <no-reply@localhost>'),
     SMTP_HOST: z.string().min(1).default('localhost'),
     SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),

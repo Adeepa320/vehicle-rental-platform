@@ -26,7 +26,8 @@
     "db:migrate": "pnpm --filter @vrp/database migrate",
     "db:seed": "pnpm --filter @vrp/database seed",
     "db:setup": "pnpm db:up && pnpm db:migrate && pnpm db:seed",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "admin:grant": "pnpm --filter @vrp/api admin:grant"
   },
   "devDependencies": {
     "prettier": "^3.9.9",

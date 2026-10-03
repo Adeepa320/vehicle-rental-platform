@@ -35,6 +35,8 @@ Principles: least privilege, least data, defence in depth, secure defaults, audi
 | Google sign-in         | Later | OAuth 2.0 with PKCE; account linking only after email ownership is confirmed                                                                                                                         |
 | Admin MFA              | ✓     | Email OTP on every admin login in MVP; TOTP app (RFC 6238) in Phase 10                                                                                                                               |
 
+**Phase 3 note (2026-10-03):** admin MFA is **not implemented yet**. Admin accounts are created exclusively with the audited `pnpm admin:grant` CLI (requires database access; no hard-coded admin, no credentials in source) for existing, verified accounts, and use the normal e-mail + password login with the customer session model. E-mail-OTP/TOTP on admin login, shorter admin sessions and a `super_admin` UI for granting roles are **production-hardening items** that must ship before the admin console is reachable from the public internet.
+
 ### 2.2 Session model
 
 - **Access token:** JWT (ES256 or EdDSA), 15 minutes, claims `sub`, `roles`, `pid` (provider id), `sid` (session id), `iat`, `exp`, `aud`, `iss`. Not stored server side. Signing keys rotated via `kid`.
@@ -86,13 +88,16 @@ Principles: least privilege, least data, defence in depth, secure defaults, audi
 
 Roles are claims in the access token; **ownership** is enforced in services (`booking.customer_id = caller` or `booking.provider_id = caller.pid`). Guards never trust client-supplied ids for ownership; they filter queries by the caller.
 
+**As implemented in Phases 2–3:** `RolesGuard` reads roles from the user row on every request (not from token claims), so grants and revocations apply immediately. The `provider` role is granted only inside the approval transaction of a provider application — never from any client-writable field (all request schemas are strict and reject `roles`, `status` and review fields) — and `admin` / `super_admin` only through the audited CLI. `ActiveProviderGuard` additionally requires an active (not suspended) provider profile for provider-only actions. Applicant endpoints are all `/providers/me/...`; there is no by-id applicant endpoint, so one user cannot read another user's application.
+
 ### 3.2 Rules worth stating explicitly
 
 - Providers see customer PII (full licence number, phone) only from the configured reveal stage (`confirmed` by default), and only for their own bookings.
 - Customers see provider phone/exact address only from the reveal stage.
 - Registration numbers, exact pickup pins and documents are never in public responses.
 - Admin document access produces an `admin_audit_logs` row with the document id.
-- Admin accounts cannot be created through registration; only a `super_admin` can grant `admin`, and the grant is audited.
+- Admin accounts cannot be created through registration; only a `super_admin` can grant `admin`, and the grant is audited. _(Phase 3: granted with `pnpm admin:grant` by someone with database access; the `super_admin` UI comes later. Every grant writes `audit_events` `admin.role_granted`.)_
+- Trust wording: UI and e-mails say **"Approved provider"** / **"Platform-reviewed"**, never "Government ID verified" or "identity verified", because Phase 3 verification is a manual operator check of contact details and operating area, not a document check.
 - Provider staff accounts (future `provider_members`) will have scoped permissions (e.g. `manage_bookings` without `view_ledger`).
 
 ---
@@ -113,6 +118,8 @@ Roles are claims in the access token; **ownership** is enforced in services (`bo
 ---
 
 ## 5. File upload and document security
+
+**Phase 3 note (2026-10-03):** none of this is implemented yet and **no files are collected**. Provider onboarding deliberately stores no NIC / passport / licence / business-registration / bank documents and introduces no object storage (MinIO / S3 / R2) or presigned uploads; verification is a manual operator process (phone / e-mail). Document collection and the controls in this table arrive together in a later phase.
 
 | Control                 | Detail                                                                                                                                                                                                                                   |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -228,6 +235,7 @@ Sri Lanka's PDPA (Act No. 9 of 2022, amended by Act No. 22 of 2025) establishes 
 
 - Structured JSON logs (pino) with `requestId`, `userId` (not names), route, latency, status. **Redaction** list applied before emit: passwords, tokens, OTP codes, licence/ID numbers, bank accounts, full phone numbers (last 3 digits kept), card data.
 - Audit trails: `booking_events` (all booking transitions), `admin_audit_logs` (all admin actions), `payment_webhook_events` (all gateway callbacks), document access events.
+  **Phase 3:** implemented as `audit_events` (actor, action, target, reason, metadata, ip), written in the same transaction as the change: every admin review decision, suspension / reactivation, application submission, provider profile update and CLI role grant. Application logs mask e-mail addresses and never contain reasons, notes or form contents.
 - Alerts: webhook signature failures, OTP rate-limit trips, exclusion-constraint violations spike (sign of a bug), failed job retries, 5xx rate, SMS budget threshold.
 - Error tracking (Sentry) with PII scrubbing enabled.
 

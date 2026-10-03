@@ -33,6 +33,13 @@
 | D27 | Refresh cookie design and CSRF strategy (SameSite=Lax + Origin guard)                                  |
 | D28 | OpenAPI via @nestjs/swagger fed by Zod JSON Schema export (resolves D18)                               |
 | D29 | SMTP adapter + Mailpit for e-mail; nodemailer, argon2, cookie-parser added                             |
+| D30 | Lean Phase 3: reviewed application, manual/offline verification, no SMS, no documents, no storage      |
+| D31 | Application record separate from profile; arrays on the application, relation tables on the profile    |
+| D32 | Status-conditioned transitions; `rejected` terminal; approval re-validates inside the transaction      |
+| D33 | Suspension is a profile status; `provider` role retained; `ActiveProviderGuard`                        |
+| D34 | `audit_events` generalises `admin_audit_logs`                                                          |
+| D35 | Admin bootstrap via CLI (`pnpm admin:grant`); admin MFA deferred to production hardening               |
+| D36 | Public reference endpoints, keyset pagination helper, `PATCH /providers/me`, `tsx` for CLI scripts     |
 
 ---
 
@@ -236,6 +243,52 @@
 ### D29 — E-mail delivery and new dependencies
 
 **Decision.** `EmailProvider` interface with `SmtpEmailProvider` (`nodemailer`, Mailpit locally at `localhost:1025`, UI `:8025`) and `MemoryEmailProvider` (tests). Production can use any SMTP endpoint (including a provider's SMTP) or add an HTTP provider class without touching callers. Dependencies added this phase: `argon2` (Argon2id, native prebuilds, build script allow-listed), `jose`, `nodemailer`, `cookie-parser`, `@nestjs/swagger`, `drizzle-orm` (now a direct API dependency for query operators); `@scarf/scarf` telemetry build script explicitly denied.
+
+---
+
+## Phase 3 implementation decisions (2026-10-03)
+
+### D30 — Lean Phase 3: reviewed application, manual verification, no SMS, no documents, no storage
+
+**Decision.** Validation-stage provider onboarding is a **reviewed application**: a verified customer fills in a structured form, an operator verifies the business **manually and offline** (calls the number, checks the address / website / social page) and records the decision in the admin UI. The phone number is collected (E.164) but **remains unverified** — `phone_verified_at` exists and stays NULL until a real SMS flow exists; nothing fakes verification. **No sensitive documents** (NIC, passport, licence, business registration, bank, ownership) are collected or stored and **no object storage** (MinIO, S3, R2, presigned uploads) is introduced. Public wording is "Approved provider" / "Platform-reviewed", never "Government ID verified". Notifications stay on the Phase 2 e-mail path (Mailpit locally): application received, changes requested, approved, rejected, suspended, reactivated, plus an optional operator notice (`OPERATOR_NOTIFICATION_EMAIL`).
+**Alternatives.** (a) The original Phase 3 (documents in a private bucket, signed URLs, viewer) — rejected for now: it needs storage and encryption work, and it would make the platform a custodian of identity documents (PDPA exposure, breach impact) before there is any traffic to justify it. (b) The Phase 0 "instant provider" (`POST /providers` grants the role immediately) — rejected because the trust promise ("verified providers") requires a human check before a provider can be shown. (c) SMS OTP for the phone — rejected: it needs a paid provider and the budget rule is no paid services until validation.
+**Consequences.** Stronger verification is additive later (a `provider_documents` table, badge levels, phone OTP) without changing the application flow. The operator's manual check is the trust mechanism and must be reflected honestly in the UI copy.
+
+### D31 — Application record separate from the profile
+
+**Decision.** `provider_applications` holds the form as submitted (one row per user; place and category selections as `uuid[]` / `text[]` snapshots; review fields `review_reason` for the applicant and `admin_notes` for staff). `provider_profiles` is created **only on approval**, copying the approved data, and the selections are normalised into `provider_service_areas` and `provider_vehicle_categories` for future joins (search by place / category).
+**Alternatives.** A single `provider_profiles` row with a `verification_status` column (Phase 0 design) — rejected: it mixes "what the applicant typed" with "what we approved", leaks review-only columns into the provider object, and forces every later provider query to filter unapproved rows. Normalised relation tables on the application too — unnecessary while the application is only read as a whole.
+**Consequences.** Re-application after rejection is a later feature (currently `rejected` is terminal); the applicant view and the admin view are different contracts (`ProviderApplicationSchema` vs `AdminProviderApplicationSchema`) so admin-only fields can never leak.
+
+### D32 — Status-conditioned transitions; approval re-validates inside the transaction
+
+**Decision.** The state machine (`provider-application.state.ts`) is enforced in SQL: every transition is a single `UPDATE … SET status = … WHERE id = … AND status IN (allowed) RETURNING`; zero rows → `409 INVALID_STATE_TRANSITION` (or `404` when the id is unknown). Approval runs in one transaction: transition → re-parse the stored form against `ProviderApplicationRequiredSchema` (`400` and rollback if a required field is missing) → insert profile (slug with retry on unique violation) → relation rows → `UPDATE users SET roles = array_append(roles, 'provider') WHERE NOT ('provider' = ANY(roles))` → audit row → e-mail enqueue through pg-boss on the same transaction (D24). `rejected` is terminal in Phase 3.
+**Alternatives.** Read-check-write in application code — racy with two admins; optimistic version columns — more machinery than needed for one status column.
+**Consequences.** Double approvals and concurrent decisions are safe by construction; tests assert the rollback (no profile, no role, status unchanged) when the profile insert fails.
+
+### D33 — Suspension is a profile status; the provider role stays
+
+**Decision.** `provider_profiles.status ∈ {active, suspended}` with reason and timestamps. The `provider` role is **not** removed on suspension; `ActiveProviderGuard` (profile must exist and be active) protects provider-only actions and returns `403 PROVIDER_SUSPENDED`. Reactivation clears the suspension fields and is audited and e-mailed like suspension.
+**Alternatives.** Removing the role — loses the information that the user was approved, requires re-granting, and breaks "who is a provider" queries; reusing the application status — suspension is about an approved provider, not about the application.
+**Consequences.** The dashboard stays readable while suspended (with the reason), but every later provider-only route (vehicles, bookings) must use the guard. `PATCH /providers/me` is the first guarded action and exists mainly so suspension is testable now.
+
+### D34 — `audit_events` generalises `admin_audit_logs`
+
+**Decision.** One append-only `audit_events` table (`actor_user_id`, `actor_type admin|user|system`, `action`, `target_type`, `target_id`, `reason`, `metadata jsonb`, `ip`) written through `AuditService.record(input, tx)` inside the transaction of the change. Phase 3 actions: `provider_application.submitted | review_started | changes_requested | approved | rejected`, `provider_profile.updated | suspended | reactivated`, `admin.role_granted`.
+**Alternatives.** The admin-only `admin_audit_logs` of the design — too narrow (submission by a user and CLI grants by the system need auditing too); a generic event-sourcing log — overkill.
+**Consequences.** `before` / `after` snapshots are added when settings and booking operations need them; an admin read endpoint for the trail comes with the admin console (API_DESIGN §13 `GET /admin/audit-logs`).
+
+### D35 — Admin bootstrap via CLI; admin MFA deferred
+
+**Decision.** `pnpm admin:grant --email <email> [--role admin|super_admin]` (`apps/api/src/cli/grant-admin.ts`, run with `tsx`) grants the role to an **existing, active, e-mail-verified** user, idempotently, and writes an `audit_events` row (`admin.role_granted`, actor `system`, metadata `{ role, via: 'cli' }`). It needs `DATABASE_URL` and nothing else; there is no hard-coded admin, no seeded admin, no admin credentials in source or env. The same `grantRole` function is used by the tests. Admin MFA, shorter admin sessions and a `super_admin` grant UI are **production-hardening items** (SECURITY_AND_PRIVACY §2.1) — the admin console is local-only in this phase.
+**Alternatives.** A seeded admin with an env password — rejected (credential in config, easy to leak into source); first-registered-user-becomes-admin — rejected (race, surprising).
+**Consequences.** Before any internet exposure of `/admin`, MFA must be implemented; this is tracked explicitly rather than silently dropped.
+
+### D36 — Reference endpoints, pagination helper, provider PATCH, `tsx`
+
+**Decision.** Public read-only `GET /reference/districts | places | vehicle-categories` feed the application form (active entries only; inactive districts / places / categories are rejected server-side with field-level `400` details). Admin lists use a small keyset pagination helper (`apps/api/src/common/pagination.ts`: base64url `createdAt|id` cursor, `limit` 1–50) instead of offsets. `PATCH /providers/me` lets a provider maintain contact details and is the first `ActiveProviderGuard` route. `tsx` is added as an API dev dependency to run TypeScript CLIs without a build step; `vitest` is added to the web app for its pure form / API-client logic.
+**Alternatives.** Reusing the designed `GET /places/suggest` — that is a search endpoint with ranking, which the form does not need; offset pagination — fine for a dozen rows but drifts under inserts, and the helper costs nothing.
+**Consequences.** `GET /places/suggest` and `GET /vehicle-categories` (API_DESIGN §9) remain for the search phase; the reference endpoints are stable form inputs.
 
 ---
 

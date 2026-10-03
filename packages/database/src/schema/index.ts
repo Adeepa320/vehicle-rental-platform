@@ -6,3 +6,5 @@ export * from './platform-settings';
 export * from './users';
 export * from './refresh-tokens';
 export * from './one-time-tokens';
+export * from './providers';
+export * from './audit-events';

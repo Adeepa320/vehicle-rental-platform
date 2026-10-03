@@ -24,6 +24,9 @@ export const ApiErrorCodeSchema = z.enum([
   'TOKEN_INVALID',
   'TOKEN_EXPIRED',
   'REFRESH_INVALID',
+  // providers
+  'INVALID_STATE_TRANSITION',
+  'PROVIDER_SUSPENDED',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

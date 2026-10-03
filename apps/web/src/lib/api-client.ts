@@ -1,22 +1,44 @@
 import {
+  AdminProviderApplicationListSchema,
+  AdminProviderApplicationSchema,
+  AdminProviderDetailSchema,
+  AdminProviderListSchema,
   ApiErrorSchema,
   AuthSessionResponseSchema,
+  DistrictSchema,
   HealthResponseSchema,
   MessageResponseSchema,
+  PlaceSummarySchema,
+  ProviderApplicationSchema,
+  ProviderProfileSchema,
   ReadyResponseSchema,
   RegisterResponseSchema,
   UserSchema,
+  VehicleCategorySchema,
   VerifyEmailResponseSchema,
+  type AdminProviderApplication,
+  type AdminProviderApplicationList,
+  type AdminProviderDetail,
+  type AdminProviderList,
   type ApiErrorDetail,
   type AuthSessionResponse,
+  type District,
   type HealthResponse,
   type LoginRequest,
   type MessageResponse,
+  type PlaceSummary,
+  type ProviderApplication,
+  type ProviderApplicationDraft,
+  type ProviderApplicationStatus,
+  type ProviderProfile,
+  type ProviderStatus,
   type ReadyResponse,
   type RegisterRequest,
   type RegisterResponse,
   type UpdateProfileRequest,
+  type UpdateProviderProfileRequest,
   type User,
+  type VehicleCategory,
   type VerifyEmailResponse,
 } from '@vrp/contracts';
 import { z, type ZodType } from 'zod';
@@ -43,8 +65,9 @@ export interface ApiClientOptions {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
+  query?: Record<string, string | number | undefined>;
   accessToken?: string;
   /** Non-2xx statuses whose body is still parsed with the success schema (e.g. 503 for /ready). */
   allowStatuses?: number[];
@@ -69,7 +92,12 @@ export function createApiClient(options: ApiClientOptions) {
     schema: ZodType<T>,
     opts: RequestOptions = {},
   ): Promise<T> {
-    const response = await fetchImpl(`${baseUrl}${path}`, {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(opts.query ?? {})) {
+      if (value !== undefined && value !== '') params.set(key, String(value));
+    }
+    const queryString = params.toString();
+    const response = await fetchImpl(`${baseUrl}${path}${queryString ? `?${queryString}` : ''}`, {
       method: opts.method ?? 'GET',
       headers: {
         accept: 'application/json',
@@ -108,6 +136,8 @@ export function createApiClient(options: ApiClientOptions) {
     }
     return result.data;
   }
+
+  const withToken = (accessToken: string) => ({ accessToken });
 
   return {
     getHealth: (): Promise<HealthResponse> => request('/health', HealthResponseSchema),
@@ -164,9 +194,148 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     users: {
-      me: (accessToken: string): Promise<User> => request('/users/me', UserSchema, { accessToken }),
+      me: (accessToken: string): Promise<User> =>
+        request('/users/me', UserSchema, withToken(accessToken)),
       updateMe: (accessToken: string, body: UpdateProfileRequest): Promise<User> =>
         request('/users/me', UserSchema, { method: 'PATCH', body, accessToken }),
+    },
+
+    reference: {
+      districts: (): Promise<District[]> =>
+        request('/reference/districts', z.array(DistrictSchema)),
+      places: (districtId?: string): Promise<PlaceSummary[]> =>
+        request('/reference/places', z.array(PlaceSummarySchema), { query: { districtId } }),
+      vehicleCategories: (): Promise<VehicleCategory[]> =>
+        request('/reference/vehicle-categories', z.array(VehicleCategorySchema)),
+    },
+
+    providers: {
+      /** Resolves `null` when the user has not started an application. */
+      myApplication: async (accessToken: string): Promise<ProviderApplication | null> => {
+        try {
+          return await request(
+            '/providers/me/application',
+            ProviderApplicationSchema,
+            withToken(accessToken),
+          );
+        } catch (error) {
+          if (error instanceof ApiClientError && error.status === 404) return null;
+          throw error;
+        }
+      },
+      saveApplication: (
+        accessToken: string,
+        body: ProviderApplicationDraft,
+      ): Promise<ProviderApplication> =>
+        request('/providers/me/application', ProviderApplicationSchema, {
+          method: 'PUT',
+          body,
+          accessToken,
+        }),
+      submitApplication: (accessToken: string): Promise<ProviderApplication> =>
+        request('/providers/me/application/submit', ProviderApplicationSchema, {
+          method: 'POST',
+          body: { acceptProviderAgreement: true },
+          accessToken,
+        }),
+      /** Resolves `null` when the user is not an approved provider. */
+      myProfile: async (accessToken: string): Promise<ProviderProfile | null> => {
+        try {
+          return await request('/providers/me', ProviderProfileSchema, withToken(accessToken));
+        } catch (error) {
+          if (error instanceof ApiClientError && error.status === 404) return null;
+          throw error;
+        }
+      },
+      updateProfile: (
+        accessToken: string,
+        body: UpdateProviderProfileRequest,
+      ): Promise<ProviderProfile> =>
+        request('/providers/me', ProviderProfileSchema, { method: 'PATCH', body, accessToken }),
+    },
+
+    admin: {
+      listApplications: (
+        accessToken: string,
+        query: { status?: ProviderApplicationStatus; cursor?: string; limit?: number } = {},
+      ): Promise<AdminProviderApplicationList> =>
+        request('/admin/provider-applications', AdminProviderApplicationListSchema, {
+          accessToken,
+          query,
+        }),
+      getApplication: (accessToken: string, id: string): Promise<AdminProviderApplication> =>
+        request(
+          `/admin/provider-applications/${id}`,
+          AdminProviderApplicationSchema,
+          withToken(accessToken),
+        ),
+      startReview: (accessToken: string, id: string): Promise<AdminProviderApplication> =>
+        request(`/admin/provider-applications/${id}/start-review`, AdminProviderApplicationSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      requestChanges: (
+        accessToken: string,
+        id: string,
+        reason: string,
+      ): Promise<AdminProviderApplication> =>
+        request(
+          `/admin/provider-applications/${id}/request-changes`,
+          AdminProviderApplicationSchema,
+          {
+            method: 'POST',
+            body: { reason },
+            accessToken,
+          },
+        ),
+      approve: (
+        accessToken: string,
+        id: string,
+        adminNotes?: string,
+      ): Promise<AdminProviderApplication> =>
+        request(`/admin/provider-applications/${id}/approve`, AdminProviderApplicationSchema, {
+          method: 'POST',
+          body: adminNotes ? { adminNotes } : {},
+          accessToken,
+        }),
+      reject: (
+        accessToken: string,
+        id: string,
+        reason: string,
+      ): Promise<AdminProviderApplication> =>
+        request(`/admin/provider-applications/${id}/reject`, AdminProviderApplicationSchema, {
+          method: 'POST',
+          body: { reason },
+          accessToken,
+        }),
+      listProviders: (
+        accessToken: string,
+        query: { status?: ProviderStatus; cursor?: string; limit?: number } = {},
+      ): Promise<AdminProviderList> =>
+        request('/admin/providers', AdminProviderListSchema, { accessToken, query }),
+      getProvider: (accessToken: string, id: string): Promise<AdminProviderDetail> =>
+        request(`/admin/providers/${id}`, AdminProviderDetailSchema, withToken(accessToken)),
+      suspendProvider: (
+        accessToken: string,
+        id: string,
+        reason: string,
+      ): Promise<AdminProviderDetail> =>
+        request(`/admin/providers/${id}/suspend`, AdminProviderDetailSchema, {
+          method: 'POST',
+          body: { reason },
+          accessToken,
+        }),
+      reactivateProvider: (
+        accessToken: string,
+        id: string,
+        note?: string,
+      ): Promise<AdminProviderDetail> =>
+        request(`/admin/providers/${id}/reactivate`, AdminProviderDetailSchema, {
+          method: 'POST',
+          body: note ? { note } : {},
+          accessToken,
+        }),
     },
   };
 }

@@ -68,6 +68,9 @@ The approved product, architecture and roadmap live in `docs/`. They are the sou
 - API routes are protected by default (global `JwtAuthGuard`); opt out only with `@Public()` and a reason. Use `@Roles()` for role checks and `@CurrentUser()` for the caller. Validate bodies with `@Body(new ZodValidationPipe(Schema))` and document them with `ApiZodBody` / `ApiZodResponse` using schemas from `@vrp/contracts`.
 - Never log passwords, tokens, cookies or e-mail bodies; mask e-mail addresses in logs (`maskEmail`). Jobs that must follow a database write are enqueued inside the same transaction (`EmailService.enqueue(message, tx)`).
 - Local workflow and commands are documented in `README.md`; keep it current.
+- Provider trust wording is "Approved provider" / "Platform-reviewed" / "Provider reviewed by platform". Never write "verified identity", "Government ID verified" or similar until document verification exists.
+- Provider verification is a manual operator process (Phase 3): never set `phone_verified_at` without a real verification flow, never collect or store identity / business / bank documents, never add object storage without a decision record. Admin accounts are created only with `pnpm admin:grant`; no hard-coded admins, no admin credentials in source.
+- Provider application and profile state changes go through `ProviderApplicationsService` / `AdminReviewService` (status-conditioned `UPDATE … WHERE status IN (…)`; `409 INVALID_STATE_TRANSITION` on a lost race). Every admin decision writes an `audit_events` row with `AuditService.record(input, tx)` in the same transaction.
 
 ## 7. Verification is mandatory
 
