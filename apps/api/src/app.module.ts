@@ -11,8 +11,10 @@ import { AppLoggerModule } from './common/logging/logger.module';
 import { DatabaseModule } from './database/database.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AvailabilityModule } from './modules/availability/availability.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { EmailModule } from './modules/notifications/email/email.module';
@@ -54,6 +56,8 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
     AuthModule,
     ProvidersModule,
+    CatalogueModule,
+    AvailabilityModule,
     AdminModule,
   ],
   providers: [

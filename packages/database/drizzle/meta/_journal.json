@@ -50,6 +50,27 @@
       "when": 1791043316559,
       "tag": "0006_providers_updated_at_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791047078600,
+      "tag": "0007_vehicles",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791047386288,
+      "tag": "0008_vehicles_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791048403946,
+      "tag": "0009_vehicles_cascade",
+      "breakpoints": true
     }
   ]
 }

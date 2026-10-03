@@ -1,8 +1,8 @@
 import type { EmailMessage } from './email-provider';
 
-const APP_NAME = 'Vehicle Rental Platform';
+export const APP_NAME = 'Vehicle Rental Platform';
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -11,7 +11,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function layout(title: string, bodyHtml: string): string {
+export function layout(title: string, bodyHtml: string): string {
   return `<!doctype html><html><body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;color:#111;max-width:560px;margin:0 auto;padding:24px">
 <h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(title)}</h1>
 ${bodyHtml}
@@ -19,11 +19,11 @@ ${bodyHtml}
 </body></html>`;
 }
 
-function button(href: string, label: string): string {
+export function button(href: string, label: string): string {
   return `<p><a href="${escapeHtml(href)}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(label)}</a></p>`;
 }
 
-function quote(text: string): string {
+export function quote(text: string): string {
   return `<blockquote style="margin:12px 0;padding:8px 12px;border-left:3px solid #ccc;color:#333">${escapeHtml(text)}</blockquote>`;
 }
 

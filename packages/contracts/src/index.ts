@@ -5,3 +5,7 @@ export * from './auth/user';
 export * from './auth/auth';
 export * from './reference/reference';
 export * from './providers/provider';
+export * from './common/money';
+export * from './vehicles/location';
+export * from './vehicles/vehicle';
+export * from './vehicles/availability';

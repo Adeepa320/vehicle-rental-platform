@@ -2,44 +2,49 @@
 
 **Status:** Draft v0.1 for review (2026-10-02). Each record: context → options → decision → consequences → revisit trigger. Facts about third-party pricing/features come from the research summarised in COMPETITOR_ANALYSIS.md and the appendices referenced below (all checked 2026-10-02; prices change — re-verify before contracts).
 
-| ID  | Decision                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------ |
-| D1  | PostgreSQL (not MongoDB)                                                                               |
-| D2  | PostGIS for geographic search                                                                          |
-| D3  | Separate NestJS API + Next.js web (not Next.js full-stack)                                             |
-| D4  | NestJS (TypeScript) rather than Go or Hono                                                             |
-| D5  | Drizzle ORM rather than Prisma                                                                         |
-| D6  | MapLibre + curated gazetteer rather than Google Maps Platform (MVP)                                    |
-| D7  | Cloudflare R2 rather than Cloudinary or AWS S3                                                         |
-| D8  | PayHere, and the "advance = commission" MVP payment model                                              |
-| D9  | Modular monolith, not microservices; pg-boss, not Redis/BullMQ                                         |
-| D10 | Hosting: Railway + Neon + Cloudflare (not Vercel/VPS by default)                                       |
-| D11 | Custom auth in the API (not Auth.js/Clerk/Supabase Auth/Firebase)                                      |
-| D12 | Request-to-book with calendar hold on acceptance (not instant book, not hold on request)               |
-| D13 | Notifications: email + local SMS + wa.me links (no WhatsApp API, no chat)                              |
-| D14 | Exclusion constraint on `vehicle_holds` for double-booking prevention                                  |
-| D15 | Monorepo with shared Zod contracts                                                                     |
-| D16 | TypeScript 6.0 (not 7) with NodeNext module resolution; CommonJS output for Nest and internal packages |
-| D17 | ESLint 9 (not 10) until Next's lint plugins support ESLint 10                                          |
-| D18 | Per-route Zod validation pipe now; OpenAPI-from-Zod deferred to Phase 2                                |
-| D19 | pg-boss started only in the worker process; loaded via `require(esm)`                                  |
-| D20 | Phase 1 local-only infrastructure (no paid services, no Mailpit/MinIO yet)                             |
-| D21 | shadcn/ui v4 default preset (Base UI) and self-hosted Geist font                                       |
-| D22 | drizzle-kit PostGIS quoting workaround and migration advisory lock                                     |
-| D23 | Lean Phase 2 scope: defer SMS OTP, identity documents, uploads and the notification feed               |
-| D24 | pg-boss transactional enqueue is the outbox (no separate domain_events table)                          |
-| D25 | E-mail link tokens (one_time_tokens) instead of OTP codes for verification and reset                   |
-| D26 | jose EdDSA access tokens with ephemeral development keys; per-request user load for revocation         |
-| D27 | Refresh cookie design and CSRF strategy (SameSite=Lax + Origin guard)                                  |
-| D28 | OpenAPI via @nestjs/swagger fed by Zod JSON Schema export (resolves D18)                               |
-| D29 | SMTP adapter + Mailpit for e-mail; nodemailer, argon2, cookie-parser added                             |
-| D30 | Lean Phase 3: reviewed application, manual/offline verification, no SMS, no documents, no storage      |
-| D31 | Application record separate from profile; arrays on the application, relation tables on the profile    |
-| D32 | Status-conditioned transitions; `rejected` terminal; approval re-validates inside the transaction      |
-| D33 | Suspension is a profile status; `provider` role retained; `ActiveProviderGuard`                        |
-| D34 | `audit_events` generalises `admin_audit_logs`                                                          |
-| D35 | Admin bootstrap via CLI (`pnpm admin:grant`); admin MFA deferred to production hardening               |
-| D36 | Public reference endpoints, keyset pagination helper, `PATCH /providers/me`, `tsx` for CLI scripts     |
+| ID  | Decision                                                                                                    |
+| --- | ----------------------------------------------------------------------------------------------------------- |
+| D1  | PostgreSQL (not MongoDB)                                                                                    |
+| D2  | PostGIS for geographic search                                                                               |
+| D3  | Separate NestJS API + Next.js web (not Next.js full-stack)                                                  |
+| D4  | NestJS (TypeScript) rather than Go or Hono                                                                  |
+| D5  | Drizzle ORM rather than Prisma                                                                              |
+| D6  | MapLibre + curated gazetteer rather than Google Maps Platform (MVP)                                         |
+| D7  | Cloudflare R2 rather than Cloudinary or AWS S3                                                              |
+| D8  | PayHere, and the "advance = commission" MVP payment model                                                   |
+| D9  | Modular monolith, not microservices; pg-boss, not Redis/BullMQ                                              |
+| D10 | Hosting: Railway + Neon + Cloudflare (not Vercel/VPS by default)                                            |
+| D11 | Custom auth in the API (not Auth.js/Clerk/Supabase Auth/Firebase)                                           |
+| D12 | Request-to-book with calendar hold on acceptance (not instant book, not hold on request)                    |
+| D13 | Notifications: email + local SMS + wa.me links (no WhatsApp API, no chat)                                   |
+| D14 | Exclusion constraint on `vehicle_holds` for double-booking prevention                                       |
+| D15 | Monorepo with shared Zod contracts                                                                          |
+| D16 | TypeScript 6.0 (not 7) with NodeNext module resolution; CommonJS output for Nest and internal packages      |
+| D17 | ESLint 9 (not 10) until Next's lint plugins support ESLint 10                                               |
+| D18 | Per-route Zod validation pipe now; OpenAPI-from-Zod deferred to Phase 2                                     |
+| D19 | pg-boss started only in the worker process; loaded via `require(esm)`                                       |
+| D20 | Phase 1 local-only infrastructure (no paid services, no Mailpit/MinIO yet)                                  |
+| D21 | shadcn/ui v4 default preset (Base UI) and self-hosted Geist font                                            |
+| D22 | drizzle-kit PostGIS quoting workaround and migration advisory lock                                          |
+| D23 | Lean Phase 2 scope: defer SMS OTP, identity documents, uploads and the notification feed                    |
+| D24 | pg-boss transactional enqueue is the outbox (no separate domain_events table)                               |
+| D25 | E-mail link tokens (one_time_tokens) instead of OTP codes for verification and reset                        |
+| D26 | jose EdDSA access tokens with ephemeral development keys; per-request user load for revocation              |
+| D27 | Refresh cookie design and CSRF strategy (SameSite=Lax + Origin guard)                                       |
+| D28 | OpenAPI via @nestjs/swagger fed by Zod JSON Schema export (resolves D18)                                    |
+| D29 | SMTP adapter + Mailpit for e-mail; nodemailer, argon2, cookie-parser added                                  |
+| D30 | Lean Phase 3: reviewed application, manual/offline verification, no SMS, no documents, no storage           |
+| D31 | Application record separate from profile; arrays on the application, relation tables on the profile         |
+| D32 | Status-conditioned transitions; `rejected` terminal; approval re-validates inside the transaction           |
+| D33 | Suspension is a profile status; `provider` role retained; `ActiveProviderGuard`                             |
+| D34 | `audit_events` generalises `admin_audit_logs`                                                               |
+| D35 | Admin bootstrap via CLI (`pnpm admin:grant`); admin MFA deferred to production hardening                    |
+| D36 | Public reference endpoints, keyset pagination helper, `PATCH /providers/me`, `tsx` for CLI scripts          |
+| D37 | Lean Phase 4: no paid map API, no photos/storage yet, no search/booking; basic LKR pricing as numeric(12,2) |
+| D38 | One `vehicle_status` enum for review and listing lifecycle; identity fields locked after approval           |
+| D39 | Category-aware specification rules in the contracts (no per-category tables, no JSON blob); plate handling  |
+| D40 | Availability on `vehicle_holds` now (blocks only); expression-based exclusion constraint; overlaps refused  |
+| D41 | `provider_locations`: district + place required, optional pin, one primary, deactivate-not-delete           |
 
 ---
 
@@ -289,6 +294,40 @@
 **Decision.** Public read-only `GET /reference/districts | places | vehicle-categories` feed the application form (active entries only; inactive districts / places / categories are rejected server-side with field-level `400` details). Admin lists use a small keyset pagination helper (`apps/api/src/common/pagination.ts`: base64url `createdAt|id` cursor, `limit` 1–50) instead of offsets. `PATCH /providers/me` lets a provider maintain contact details and is the first `ActiveProviderGuard` route. `tsx` is added as an API dev dependency to run TypeScript CLIs without a build step; `vitest` is added to the web app for its pure form / API-client logic.
 **Alternatives.** Reusing the designed `GET /places/suggest` — that is a search endpoint with ranking, which the form does not need; offset pagination — fine for a dozen rows but drifts under inserts, and the helper costs nothing.
 **Consequences.** `GET /places/suggest` and `GET /vehicle-categories` (API_DESIGN §9) remain for the search phase; the reference endpoints are stable form inputs.
+
+---
+
+## Phase 4 implementation decisions (2026-10-03)
+
+### D37 — Lean Phase 4: no paid map API, no photos or storage yet, no search or booking; basic pricing
+
+**Decision.** Approved providers get pickup locations, vehicle listings with transparent basic pricing and rules, a review lifecycle and manual availability blocks — all local-only. **No paid map, geocoding or autocomplete API**: locations reuse the districts/places gazetteer and PostGIS; a pin is optional and typed in. **No vehicle photos and no object storage** (R2/S3/MinIO/Cloudinary, presigned uploads, image pipelines): the storage decision (D7) is taken when customer-facing vehicle pages exist, so the schema stays free of fake image paths or an unused `vehicle_photos` table. **No customer search, quote engine, booking or payments.** Pricing is the minimum a Sri Lankan self-drive rental needs — daily, optional weekly/monthly, refundable deposit, included km + extra-km rate, min/max days — plus rules (renter age, licence years, fuel policy, delivery flag + flat fee, pickup notes). Money is `numeric(12,2)` in PostgreSQL and decimal strings in the API (`LkrAmountSchema`, `amountToCents`), never floats; the settlement baseline is LKR with a `currency` field for later. With-driver (chauffeur) pricing is deferred rather than squeezed into the self-drive model.
+**Alternatives.** The original Phase 4 (MapLibre picker, photos with variants, documents and expiry jobs, turnaround/notice, quote engine) — rejected for the validation budget and because every one of those needs either a paid service or a customer-facing surface that does not exist yet. Integer minor units instead of `numeric` — equivalent precision; `numeric` matches the design docs and reads naturally in SQL.
+**Consequences.** Photos, documents, delivery radius, turnaround/notice and the quote engine are additive later; vehicle identity data is complete enough for them. Revisit D7 (storage) before Phase 5.
+
+### D38 — One `vehicle_status` enum; identity fields locked after approval
+
+**Decision.** A single enum covers review and listing lifecycle: `draft → submitted → under_review → changes_requested | approved | rejected`, provider `approved ⇄ inactive` (deactivate/activate), admin `approved | inactive → suspended → approved` (reactivate). Transitions are status-conditioned `UPDATE … WHERE status IN (…) RETURNING` (409 on a lost race), audited and e-mailed in one transaction, exactly like provider applications. Providers edit everything while `draft` / `changes_requested`, and only operational fields (title, description, location, pricing, rules) once approved; identity fields (`VEHICLE_IDENTITY_FIELDS`) answer `400 locked after approval` so a reviewed listing cannot silently become a different vehicle. `rejected` is terminal (create a new listing).
+**Alternatives.** Separate `review_status` + `listing_status` columns (the design's `status` + `verification_status`) — more states to keep consistent and every "is it live?" query needs both; a re-review on any edit — too heavy for price changes, which providers must be able to make freely.
+**Consequences.** `approved` is the design's `active`, `inactive` its `paused`; reactivation after suspension returns to `approved` (the provider can deactivate again). A later "document-verified vehicle" badge is a separate flag, not a status.
+
+### D39 — Category-aware specification rules in the contracts; plate handling
+
+**Decision.** Specification columns are plain nullable columns on `vehicles`. Which are required or inapplicable per category lives in `VEHICLE_CATEGORY_RULES` in `@vrp/contracts` (cars/SUVs: transmission, fuel, seats, doors; vans: no doors requirement; bikes/scooters: engine cc and fuel, no doors/AC; tuk-tuks: engine cc, fuel, seats, no doors; unknown categories fall back to "seats"). The same function (`vehicleSubmissionIssues`) produces the checklist in the UI, blocks `submit` and is re-run on approval. Registration numbers are trimmed, upper-cased and matched leniently against Sri Lankan plate formats, unique per provider (partial index), visible only to the owner and admins, with `maskRegistrationNumber` ready for public views.
+**Alternatives.** Per-category tables (class-table inheritance) — joins and migrations for every category; a `specs jsonb` blob — unvalidated and unqueryable; a hard plate regex — real plates vary (province prefixes, legacy numeric series).
+**Consequences.** Adding a category is still a seed insert plus, optionally, a rules entry; the rules are unit-tested in the contracts package.
+
+### D40 — Availability on `vehicle_holds` now; expression-based exclusion constraint; overlaps refused
+
+**Decision.** `vehicle_holds` is created in Phase 4 as the single source of unavailability (DATABASE_DESIGN §6.6, D14), but only provider manual blocks (`kind = 'block'`) are written; booking holds and the `booking_id` foreign key arrive with bookings. The period is two `timestamptz` columns (half-open `[starts_at, ends_at)`), with the exclusion constraint written over `tstzrange(starts_at, ends_at, '[)')` in a custom migration — reads stay plain timestamps and drizzle needs no range type. Overlapping blocks are **prohibited** (`409 AVAILABILITY_CONFLICT` with the conflicting periods from a pre-check; the constraint catches races), not merged. Availability = `status = approved` and no intersecting hold; `inactive`, `suspended` and unreviewed vehicles are never available. Blocks can be managed while `approved` or `inactive`, must end in the future and may span at most 366 days.
+**Alternatives.** A separate `vehicle_availability_blocks` table now and a merge later — a migration of live data for no benefit; merging overlapping blocks — hides provider mistakes and complicates deletion; `tstzrange` column — needs a custom Drizzle type for every read.
+**Consequences.** The booking service will insert `kind = 'booking'` holds through `AvailabilityService` in the same transaction as acceptance; the e2e suite already proves two concurrent inserts cannot both succeed. Turnaround buffers are added to the booking hold period later, not to blocks.
+
+### D41 — `provider_locations`: district + place required, optional pin, one primary, deactivate-not-delete
+
+**Decision.** The design's `locations` table is implemented as `provider_locations` with `district_id` and `place_id` **required** (the gazetteer is what search will use), `geom` **nullable** (an optional typed-in pin validated against the Sri Lanka bounding box), one primary per provider enforced by a partial unique index, and deactivation instead of deletion (`409 LOCATION_IN_USE` while vehicles reference it; reactivation allowed). Delivery is modelled on the vehicle (flag + flat fee) instead of a location radius, because there is no map to draw a radius on. Inventory cascades when a provider profile is hard-deleted (only tests and data-erasure do that; production uses soft states).
+**Alternatives.** Mandatory coordinates — would force a map picker and therefore tiles/geocoding decisions now; hard delete — breaks future booking history.
+**Consequences.** Search in Phase 5 can start from `place_id`/`district_id` and use `geom` when present; a MapLibre picker can be added without schema changes.
 
 ---
 

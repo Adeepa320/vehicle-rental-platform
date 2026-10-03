@@ -58,6 +58,23 @@ export class ReferenceService {
     return rows.map((c) => ({ id: c.id, name: c.name, icon: c.icon, sortOrder: c.sortOrder }));
   }
 
+  /** District + place pair of a provider location: the place must be an active place in the district. */
+  async validateLocationReferences(districtId: string, placeId: string): Promise<ApiErrorDetail[]> {
+    const issues = await this.validateApplicationReferences({
+      districtId,
+      primaryPlaceId: placeId,
+    });
+    return issues.map((issue) =>
+      issue.field === 'primaryPlaceId' ? { ...issue, field: 'placeId' } : issue,
+    );
+  }
+
+  /** A single active vehicle category (vehicle listings). */
+  async validateCategory(categoryId: string): Promise<ApiErrorDetail[]> {
+    const issues = await this.validateApplicationReferences({ vehicleCategoryIds: [categoryId] });
+    return issues.map((issue) => ({ ...issue, field: 'categoryId' }));
+  }
+
   /**
    * Checks that every supplied reference id exists and is active, and that the
    * primary place lies in the chosen district. Returns field-level issues

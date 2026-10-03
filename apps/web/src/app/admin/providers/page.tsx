@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { FormMessage } from '@/components/auth/form-primitives';
 import { ReasonAction } from '@/components/admin/reason-action';
+import { AdminNav } from '@/components/admin/admin-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -48,6 +49,7 @@ export default function AdminProvidersPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-12">
+      <AdminNav />
       <header className="space-y-2">
         <p className="text-muted-foreground text-sm font-medium">Admin</p>
         <h1 className="text-3xl font-semibold tracking-tight">Provider review</h1>

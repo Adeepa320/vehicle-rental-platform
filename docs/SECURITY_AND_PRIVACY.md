@@ -98,6 +98,7 @@ Roles are claims in the access token; **ownership** is enforced in services (`bo
 - Admin document access produces an `admin_audit_logs` row with the document id.
 - Admin accounts cannot be created through registration; only a `super_admin` can grant `admin`, and the grant is audited. _(Phase 3: granted with `pnpm admin:grant` by someone with database access; the `super_admin` UI comes later. Every grant writes `audit_events` `admin.role_granted`.)_
 - Trust wording: UI and e-mails say **"Approved provider"** / **"Platform-reviewed"**, never "Government ID verified" or "identity verified", because Phase 3 verification is a manual operator check of contact details and operating area, not a document check.
+- Inventory ownership (Phase 4): every location, vehicle and availability-block query is scoped by the caller's provider id, so another provider's resource is `404` (ids are not enumerable). `ActiveProviderGuard` fronts all inventory routes; suspended providers receive `403 PROVIDER_SUSPENDED`. Request schemas are strict (`status`, `providerId`, review fields are rejected); identity fields are locked once a vehicle is approved; a provider can never approve, suspend or reactivate a vehicle (admin role required).
 - Provider staff accounts (future `provider_members`) will have scoped permissions (e.g. `manage_bookings` without `view_ledger`).
 
 ---
@@ -245,6 +246,7 @@ Sri Lanka's PDPA (Act No. 9 of 2022, amended by Act No. 22 of 2025) establishes 
 
 - Customer "current location" is used to centre a search and compute distances in that request only. It is not persisted with the user identity. Search analytics (if enabled) store the centre rounded to 0.01° (~1 km) without a user id.
 - Provider locations are precise in the database but exposed publicly only as an approximate point (rounded to ~500 m) until a booking is confirmed.
+  **Phase 4 (2026-10-03):** coordinates are optional and typed in by the provider (no geocoding, no map API); district and gazetteer place are the required location data. Precise points, addresses, pickup instructions and full registration numbers are returned only to the owning provider and to admins. No public endpoint exposes locations or vehicles yet; the contracts ship `maskRegistrationNumber` for the first public view.
 - Delivery addresses are treated as booking PII (§8).
 - Map tiles are requested by the browser directly from the tile provider; the provider sees the viewer's IP, which is disclosed in the privacy policy (processor list).
 

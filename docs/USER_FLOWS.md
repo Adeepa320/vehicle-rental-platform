@@ -196,6 +196,8 @@ Rules:
 
 `Locations` → `New location`: name, address, choose nearest town/area from the gazetteer (only active districts offered), drop/drag a pin on the map (MapLibre; initial pin at the town centre; optional "use my current location"), pickup instructions, delivery toggle + radius + flat fee. First location becomes primary.
 
+**As implemented in Phase 4 (2026-10-03):** `/provider/locations` lists locations (primary / inactive badges, vehicle count) with an inline editor: name, district and town from the gazetteer, address, optional latitude/longitude typed in (no map), pickup instructions, "make primary". The first location becomes primary automatically; **Deactivate** is refused while vehicles use the location and can be undone with **Reactivate**. Delivery is configured per vehicle (flag + flat fee) in this phase.
+
 ### 2.3 Add Vehicle
 
 Wizard (saved as `draft` at each step):
@@ -207,9 +209,13 @@ Wizard (saved as `draft` at each step):
 5. **Documents**: Certificate of Registration, revenue licence (expiry date), insurance certificate (expiry date). Required for the "Verified vehicle" badge; the product decision in PRD.md says whether they are required before going active.
 6. **Review & publish** → `pending_review` (if document verification is required) or `active` (if provider is verified and documents are optional).
 
+**As implemented in Phase 4 (2026-10-03):** `/provider/vehicles/new` creates a `draft` from category, make, model and year; `/provider/vehicles/[id]` is a single form (basics, category-aware specifications, pricing in LKR, rules & pickup) with **Save** and **Save and submit for review**. The page shows the submission checklist, the reviewer's message after `changes_requested`, and locks identity fields once approved. Photos (step 2) and documents (step 5) are deferred; submission moves the listing to `submitted` for manual platform review.
+
 ### 2.4 Configure Availability
 
 `Calendar` per vehicle: month view from `vehicle_holds` (bookings in blue with ref; blocks in grey). Provider can add a block (date range + reason) or remove their own block. Attempting to block over a confirmed booking is refused with the conflicting booking shown. Later: iCal import/export to sync with other channels.
+
+**As implemented in Phase 4 (2026-10-03):** `/provider/vehicles/[id]/availability` (approved or inactive listings) shows an eight-week day strip with blocked days shaded, the list of current and upcoming blocks, a "block dates" form (inclusive date range in Sri Lanka time, reason, internal note) and a "check a window" tool that answers exactly what the availability API will tell customers later. Overlapping blocks are refused with the conflicting period; bookings do not exist yet.
 
 ### 2.5 Receive Booking → Accept/Decline
 
@@ -251,6 +257,8 @@ _Phase 3 implementation:_ no documents exist; the reviewer sees the application 
 ### 3.3 Vehicle Verification
 
 `Vehicle queue` (pending_review) → check photos, documents (CR matches registration number and provider; revenue licence and insurance in date) → Approve (vehicle `active` + `verified`) / Reject with reason. Document expiry job flags vehicles whose insurance or revenue licence lapses: badge removed and provider notified 14 days before and on expiry; vehicle auto-paused on expiry (product setting).
+
+_Phase 4 implementation:_ `/admin/vehicles` (queue with status filter) and `/admin/vehicles/[id]` (provider and owner, full specification, pricing and rules, pickup location, internal notes, outstanding checklist). No photos or documents exist; the reviewer confirms details with the provider, then **Start review** → **Approve** / **Request changes** (reason e-mailed; provider edits and resubmits) / **Reject** (terminal). **Suspend** removes an approved or inactive listing from availability until **Reactivate**. Every decision is audited and e-mailed.
 
 ### 3.4 Manage Users
 

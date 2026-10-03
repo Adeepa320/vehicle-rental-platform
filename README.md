@@ -59,6 +59,7 @@ Then:
 
 - <http://localhost:3000> — status page; **Create account** → check the Mailpit inbox at <http://localhost:8025> → open the verification link → log in → **Account**.
 - **Become a provider** → `/provider/application` → save and submit → as an admin, review at `/admin/providers` → approve → the applicant sees `/provider/dashboard`. See "Provider onboarding flow" below.
+- **Provider inventory** → `/provider/locations` (pickup points) → `/provider/vehicles` (listings, pricing, submit for review) → as an admin, review at `/admin/vehicles` → approve → `/provider/vehicles/[id]/availability` (manual blocks). See "Vehicle inventory flow" below.
 - <http://localhost:4000/api/docs> — Swagger UI generated from the shared Zod contracts (`/api/docs-json` for the document).
 - `GET /api/v1/health` (liveness) and `GET /api/v1/ready` (readiness: database, PostGIS, migrations).
 
@@ -142,6 +143,17 @@ Phase 3 is a lean, reviewed onboarding: no SMS, no document uploads, no object s
 
 States: `draft → submitted → under_review → changes_requested → submitted …`; `submitted | under_review → approved | rejected` (rejected is terminal for now). Wrong-state actions return `409 INVALID_STATE_TRANSITION`. Every admin decision is audited in `audit_events`.
 
+## Vehicle inventory flow (local)
+
+Phase 4 is lean too: no paid map API (district + town from the gazetteer, optional typed-in pin), no photos or object storage, no customer search or booking (TECH_DECISIONS D37–D41).
+
+1. An **approved, active provider** adds a pickup location at `/provider/locations` (the first one becomes primary; deactivating is refused while vehicles use it).
+2. `/provider/vehicles/new` creates a `draft` from category, make, model and year. `/provider/vehicles/[id]` completes the listing: specifications (category-aware), **pricing in LKR** (daily, optional weekly/monthly, deposit, included km + extra-km rate, min/max days) and rules. The page shows the submission checklist; **Save and submit for review** moves it to `submitted` and e-mails the provider (and the operator inbox when `OPERATOR_NOTIFICATION_EMAIL` is set).
+3. An **admin** reviews at `/admin/vehicles`: **Start review**, **Request changes** (reason e-mailed; the provider edits and resubmits), **Approve** or **Reject**. Approved listings can be **suspended** / **reactivated** by an admin and taken offline / put back online by the provider; identity fields (make, model, year, plate, specs) are locked after approval.
+4. `/provider/vehicles/[id]/availability` manages **manual blocks** (maintenance, rented offline, …). The vehicle is available on every day without a block while `approved`; overlapping blocks are refused (`409 AVAILABILITY_CONFLICT`) and the database's exclusion constraint on `vehicle_holds` is the final guard.
+
+Money never uses floats: amounts are decimal strings in the API (`"7500.00"`) and `numeric(12,2)` in PostgreSQL. Registration numbers are stored upper-cased and shown in full only to the provider and admins.
+
 ## Database workflow
 
 1. Edit the Drizzle schema in `packages/database/src/schema/`.
@@ -165,6 +177,8 @@ TEST_LOG_LEVEL=error pnpm --filter @vrp/api test   # show API error logs while d
 Tests that need PostgreSQL use `DATABASE_URL_TEST` and skip with a warning when it is not set. The test database is created automatically by Docker on first start (`infra/db/init/`). E-mail in tests goes to an in-memory provider; e2e tests read queued jobs straight from the pg-boss queue (`pgboss_test` schema) to obtain verification and reset tokens.
 
 Phase 3 e2e suites (`provider-application`, `admin-provider-review`, `admin-bootstrap`, `reference`) seed the gazetteer into the test database and create admins through the same `grantRole` function the CLI uses. The web app has a small Vitest suite for its pure form/API-client logic (`pnpm --filter @vrp/web test`).
+
+Phase 4 suites (`provider-locations`, `provider-vehicles`, `admin-vehicle-review`, `vehicle-availability`) build on the same helpers; the availability suite also fires two concurrent inserts at the `vehicle_holds` exclusion constraint to prove overlaps cannot both succeed.
 
 ## Continuous integration
 

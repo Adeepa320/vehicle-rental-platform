@@ -27,6 +27,9 @@ export const ApiErrorCodeSchema = z.enum([
   // providers
   'INVALID_STATE_TRANSITION',
   'PROVIDER_SUSPENDED',
+  // catalogue & availability
+  'LOCATION_IN_USE',
+  'AVAILABILITY_CONFLICT',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

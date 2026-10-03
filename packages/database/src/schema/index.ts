@@ -8,3 +8,4 @@ export * from './refresh-tokens';
 export * from './one-time-tokens';
 export * from './providers';
 export * from './audit-events';
+export * from './vehicles';

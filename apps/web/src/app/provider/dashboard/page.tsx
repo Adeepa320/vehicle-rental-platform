@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { AuthCard, FormMessage } from '@/components/auth/form-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ProviderNav } from '@/components/provider/provider-nav';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRequireAuth } from '@/lib/auth/use-require-auth';
 import { submitErrorFrom } from '@/lib/forms';
@@ -69,6 +70,7 @@ export default function ProviderDashboardPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12">
+      <ProviderNav />
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-semibold tracking-tight">{profile.displayName}</h1>
@@ -90,11 +92,23 @@ export default function ProviderDashboardPage() {
         ) : null}
       </header>
 
-      <FormMessage title="Vehicle listings are coming next">
-        Your profile is ready. Adding vehicles, pricing and availability opens in the next release;
-        we will e-mail you when it does. Until then, keep your contact details current from the
-        account page.
-      </FormMessage>
+      <AuthCard
+        title="Inventory"
+        description="Pickup locations, vehicle listings and availability."
+      >
+        <div className="flex flex-wrap gap-2">
+          <Button nativeButton={false} render={<Link href="/provider/locations" />}>
+            Pickup locations
+          </Button>
+          <Button nativeButton={false} render={<Link href="/provider/vehicles" />}>
+            Vehicles
+          </Button>
+        </div>
+        <p className="text-muted-foreground mt-3 text-sm">
+          Listings are reviewed by our team before they go live. Photos and customer bookings come
+          in later releases.
+        </p>
+      </AuthCard>
 
       <AuthCard title="Provider details">
         <dl className="grid gap-2 text-sm sm:grid-cols-[180px_1fr]">

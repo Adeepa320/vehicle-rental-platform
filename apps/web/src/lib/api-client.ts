@@ -3,6 +3,8 @@ import {
   AdminProviderApplicationSchema,
   AdminProviderDetailSchema,
   AdminProviderListSchema,
+  AdminVehicleListSchema,
+  AdminVehicleSchema,
   ApiErrorSchema,
   AuthSessionResponseSchema,
   DistrictSchema,
@@ -10,18 +12,30 @@ import {
   MessageResponseSchema,
   PlaceSummarySchema,
   ProviderApplicationSchema,
+  ProviderLocationListSchema,
+  ProviderLocationSchema,
   ProviderProfileSchema,
   ReadyResponseSchema,
   RegisterResponseSchema,
   UserSchema,
+  VehicleAvailabilitySchema,
   VehicleCategorySchema,
+  VehicleHoldListSchema,
+  VehicleHoldSchema,
+  VehicleListSchema,
+  VehicleSchema,
   VerifyEmailResponseSchema,
   type AdminProviderApplication,
   type AdminProviderApplicationList,
   type AdminProviderDetail,
   type AdminProviderList,
+  type AdminVehicle,
+  type AdminVehicleList,
   type ApiErrorDetail,
   type AuthSessionResponse,
+  type CreateAvailabilityBlockRequest,
+  type CreateProviderLocationRequest,
+  type CreateVehicleRequest,
   type District,
   type HealthResponse,
   type LoginRequest,
@@ -30,15 +44,23 @@ import {
   type ProviderApplication,
   type ProviderApplicationDraft,
   type ProviderApplicationStatus,
+  type ProviderLocation,
   type ProviderProfile,
   type ProviderStatus,
   type ReadyResponse,
   type RegisterRequest,
   type RegisterResponse,
   type UpdateProfileRequest,
+  type UpdateProviderLocationRequest,
   type UpdateProviderProfileRequest,
+  type UpdateVehicleRequest,
   type User,
+  type Vehicle,
+  type VehicleAvailability,
   type VehicleCategory,
+  type VehicleHold,
+  type VehicleStatus,
+  type VehicleSummary,
   type VerifyEmailResponse,
 } from '@vrp/contracts';
 import { z, type ZodType } from 'zod';
@@ -138,6 +160,15 @@ export function createApiClient(options: ApiClientOptions) {
   }
 
   const withToken = (accessToken: string) => ({ accessToken });
+  /** Maps a 404 to `null` for "do I have one of these?" lookups. */
+  const orNull = async <T>(promise: Promise<T>): Promise<T | null> => {
+    try {
+      return await promise;
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 404) return null;
+      throw error;
+    }
+  };
 
   return {
     getHealth: (): Promise<HealthResponse> => request('/health', HealthResponseSchema),
@@ -211,18 +242,10 @@ export function createApiClient(options: ApiClientOptions) {
 
     providers: {
       /** Resolves `null` when the user has not started an application. */
-      myApplication: async (accessToken: string): Promise<ProviderApplication | null> => {
-        try {
-          return await request(
-            '/providers/me/application',
-            ProviderApplicationSchema,
-            withToken(accessToken),
-          );
-        } catch (error) {
-          if (error instanceof ApiClientError && error.status === 404) return null;
-          throw error;
-        }
-      },
+      myApplication: (accessToken: string): Promise<ProviderApplication | null> =>
+        orNull(
+          request('/providers/me/application', ProviderApplicationSchema, withToken(accessToken)),
+        ),
       saveApplication: (
         accessToken: string,
         body: ProviderApplicationDraft,
@@ -239,19 +262,109 @@ export function createApiClient(options: ApiClientOptions) {
           accessToken,
         }),
       /** Resolves `null` when the user is not an approved provider. */
-      myProfile: async (accessToken: string): Promise<ProviderProfile | null> => {
-        try {
-          return await request('/providers/me', ProviderProfileSchema, withToken(accessToken));
-        } catch (error) {
-          if (error instanceof ApiClientError && error.status === 404) return null;
-          throw error;
-        }
-      },
+      myProfile: (accessToken: string): Promise<ProviderProfile | null> =>
+        orNull(request('/providers/me', ProviderProfileSchema, withToken(accessToken))),
       updateProfile: (
         accessToken: string,
         body: UpdateProviderProfileRequest,
       ): Promise<ProviderProfile> =>
         request('/providers/me', ProviderProfileSchema, { method: 'PATCH', body, accessToken }),
+    },
+
+    locations: {
+      list: (accessToken: string): Promise<ProviderLocation[]> =>
+        request('/providers/me/locations', ProviderLocationListSchema, withToken(accessToken)),
+      create: (
+        accessToken: string,
+        body: CreateProviderLocationRequest,
+      ): Promise<ProviderLocation> =>
+        request('/providers/me/locations', ProviderLocationSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      update: (
+        accessToken: string,
+        id: string,
+        body: UpdateProviderLocationRequest,
+      ): Promise<ProviderLocation> =>
+        request(`/providers/me/locations/${id}`, ProviderLocationSchema, {
+          method: 'PATCH',
+          body,
+          accessToken,
+        }),
+      deactivate: (accessToken: string, id: string): Promise<void> =>
+        request(`/providers/me/locations/${id}`, NoContentSchema, {
+          method: 'DELETE',
+          accessToken,
+        }),
+    },
+
+    vehicles: {
+      list: (accessToken: string): Promise<VehicleSummary[]> =>
+        request('/providers/me/vehicles', VehicleListSchema, withToken(accessToken)),
+      get: (accessToken: string, id: string): Promise<Vehicle> =>
+        request(`/providers/me/vehicles/${id}`, VehicleSchema, withToken(accessToken)),
+      create: (accessToken: string, body: CreateVehicleRequest): Promise<Vehicle> =>
+        request('/providers/me/vehicles', VehicleSchema, { method: 'POST', body, accessToken }),
+      update: (accessToken: string, id: string, body: UpdateVehicleRequest): Promise<Vehicle> =>
+        request(`/providers/me/vehicles/${id}`, VehicleSchema, {
+          method: 'PATCH',
+          body,
+          accessToken,
+        }),
+      submit: (accessToken: string, id: string): Promise<Vehicle> =>
+        request(`/providers/me/vehicles/${id}/submit`, VehicleSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      deactivate: (accessToken: string, id: string): Promise<Vehicle> =>
+        request(`/providers/me/vehicles/${id}/deactivate`, VehicleSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      activate: (accessToken: string, id: string): Promise<Vehicle> =>
+        request(`/providers/me/vehicles/${id}/activate`, VehicleSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      availability: (
+        accessToken: string,
+        id: string,
+        from: string,
+        to: string,
+      ): Promise<VehicleAvailability> =>
+        request(`/providers/me/vehicles/${id}/availability`, VehicleAvailabilitySchema, {
+          accessToken,
+          query: { from, to },
+        }),
+      blocks: (
+        accessToken: string,
+        id: string,
+        range: { from?: string; to?: string } = {},
+      ): Promise<VehicleHold[]> =>
+        request(`/providers/me/vehicles/${id}/blocks`, VehicleHoldListSchema, {
+          accessToken,
+          query: range,
+        }),
+      createBlock: (
+        accessToken: string,
+        id: string,
+        body: CreateAvailabilityBlockRequest,
+      ): Promise<VehicleHold> =>
+        request(`/providers/me/vehicles/${id}/blocks`, VehicleHoldSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      deleteBlock: (accessToken: string, id: string, blockId: string): Promise<void> =>
+        request(`/providers/me/vehicles/${id}/blocks/${blockId}`, NoContentSchema, {
+          method: 'DELETE',
+          accessToken,
+        }),
     },
 
     admin: {
@@ -334,6 +447,33 @@ export function createApiClient(options: ApiClientOptions) {
         request(`/admin/providers/${id}/reactivate`, AdminProviderDetailSchema, {
           method: 'POST',
           body: note ? { note } : {},
+          accessToken,
+        }),
+
+      listVehicles: (
+        accessToken: string,
+        query: {
+          status?: VehicleStatus;
+          providerId?: string;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<AdminVehicleList> =>
+        request('/admin/vehicles', AdminVehicleListSchema, { accessToken, query }),
+      getVehicle: (accessToken: string, id: string): Promise<AdminVehicle> =>
+        request(`/admin/vehicles/${id}`, AdminVehicleSchema, withToken(accessToken)),
+      vehicleAction: (
+        accessToken: string,
+        id: string,
+        action:
+          'start-review' | 'request-changes' | 'approve' | 'reject' | 'suspend' | 'reactivate',
+        body: { reason?: string; adminNotes?: string; note?: string } = {},
+      ): Promise<AdminVehicle> =>
+        request(`/admin/vehicles/${id}/${action}`, AdminVehicleSchema, {
+          method: 'POST',
+          body: Object.fromEntries(
+            Object.entries(body).filter(([, v]) => v !== undefined && v !== ''),
+          ),
           accessToken,
         }),
     },
