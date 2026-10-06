@@ -2,17 +2,20 @@ import {
   BookingActorTypeSchema,
   CURRENCY,
   PriceLineSchema,
+  normalizePercentage,
   type AdminBooking,
+  type AdminPayment,
   type Booking as BookingView,
   type BookingEvent as BookingEventView,
   type BookingPrice,
   type BookingSummary,
   type BookingViewer,
 } from '@vrp/contracts';
-import type { Booking, BookingEvent, VehicleHold } from '@vrp/database';
+import type { Booking, BookingEvent, PaymentRow, VehicleHold } from '@vrp/database';
 import { z } from 'zod';
 
 import { toHold } from '../catalogue/vehicle.mappers';
+import { paymentSummaryFor } from '../payments/payment.persistence';
 import type { BookingSettings } from './booking-settings.service';
 import { firstName, vehicleTitleOf, type BookingContext } from './booking.persistence';
 import { allowedActions, contactAvailable } from './booking.state';
@@ -25,7 +28,8 @@ export interface ViewContext {
   viewer: BookingViewer;
   settings: BookingSettings;
   now: Date;
-  testingConfirmationEnabled: boolean;
+  /** The booking's payment attempts (oldest first); drives the payment summary and `pay` action. */
+  payments: PaymentRow[];
   thumbnailUrl: string | null;
 }
 
@@ -41,6 +45,9 @@ export function priceOf(b: Booking): BookingPrice {
     monthlyRate: b.monthlyRate,
     subtotal: b.subtotalAmount,
     securityDeposit: b.securityDepositAmount,
+    advancePercentage: normalizePercentage(b.advancePercentage),
+    advance: b.advanceAmount,
+    balanceDue: b.balanceDueAmount,
     includedKmPerDay: b.includedKmPerDay,
     includedKmTotal: b.includedKmPerDay === null ? null : b.includedKmPerDay * b.rentalDays,
     extraKmRate: b.extraKmRate,
@@ -48,7 +55,43 @@ export function priceOf(b: Booking): BookingPrice {
   };
 }
 
-export function toBookingEvent(row: BookingEvent): BookingEventView {
+/**
+ * Metadata keys a customer or provider may see per timeline action
+ * (SECURITY_AND_PRIVACY §3.2). Everything else stored on the row — internal
+ * payment / hold / booking ids and whatever a future event adds — stays
+ * internal; admins receive the stored metadata unchanged for troubleshooting.
+ * An action missing here exposes no metadata at all to non-admins.
+ */
+export const VISIBLE_EVENT_METADATA: Readonly<Record<string, readonly string[]>> = {
+  'booking.requested': ['rentalDays', 'respondBy'],
+  'booking.accepted': ['confirmBy'],
+  'booking.declined': ['reason', 'automatic'],
+  'booking.confirmed': ['source', 'gateway', 'amount', 'currency'],
+  'booking.contact_revealed': ['party'],
+  'booking.picked_up': ['odometerKm', 'fuelLevel'],
+  'booking.completed': ['odometerKm', 'fuelLevel'],
+  'booking.no_show': ['holdReleased'],
+  'booking.cancelled': ['by', 'holdReleased', 'refundDueAmount'],
+  'booking.expired': ['stage', 'holdReleased', 'pendingPaymentsCancelled'],
+};
+
+/** Allow-list projection of a stored event's metadata for the given viewer. */
+export function visibleEventMetadata(
+  action: string,
+  metadata: Record<string, unknown> | null | undefined,
+  viewer: BookingViewer,
+): Record<string, unknown> | null {
+  if (!metadata) return null;
+  if (viewer === 'admin') return metadata;
+  const allowed = VISIBLE_EVENT_METADATA[action] ?? [];
+  const projected: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in metadata) projected[key] = metadata[key];
+  }
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+export function toBookingEvent(row: BookingEvent, viewer: BookingViewer): BookingEventView {
   const actor = BookingActorTypeSchema.safeParse(row.actorType);
   return {
     id: row.id,
@@ -56,7 +99,7 @@ export function toBookingEvent(row: BookingEvent): BookingEventView {
     actorType: actor.success ? actor.data : 'system',
     fromStatus: row.fromStatus,
     toStatus: row.toStatus,
-    metadata: row.metadata ?? null,
+    metadata: visibleEventMetadata(row.action, row.metadata, viewer),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -74,6 +117,7 @@ export function toBookingView(
 ): BookingView {
   const b = ctx.booking;
   const revealed = contactAvailable(b.status, view.settings.contactRevealStage);
+  const payment = paymentSummaryFor(b, view.payments);
   const customerSide = view.viewer === 'customer';
   const seesExactPickup = !customerSide || revealed;
   return {
@@ -147,7 +191,10 @@ export function toBookingView(
     declineNote: b.declineNote,
     cancellationNote: b.cancellationNote,
     noShowNote: b.noShowNote,
-    confirmationSource: b.confirmationSource === 'admin_testing' ? 'admin_testing' : null,
+    confirmationSource:
+      b.confirmationSource === 'payment' || b.confirmationSource === 'admin_testing'
+        ? b.confirmationSource
+        : null,
     handover: {
       pickupOdometerKm: b.pickupOdometerKm,
       pickupFuelLevel: b.pickupFuelLevel,
@@ -157,6 +204,7 @@ export function toBookingView(
       returnNote: b.returnNote,
     },
     contact: { available: revealed, revealStage: view.settings.contactRevealStage },
+    payment,
     allowedActions: allowedActions({
       viewer: view.viewer,
       status: b.status,
@@ -164,9 +212,10 @@ export function toBookingView(
       now: view.now,
       noShowGraceHours: view.settings.noShowGraceHours,
       revealStage: view.settings.contactRevealStage,
-      testingConfirmationEnabled: view.testingConfirmationEnabled,
+      confirmBy: b.confirmBy,
+      paymentState: payment.state,
     }),
-    events: events.map(toBookingEvent),
+    events: events.map((row) => toBookingEvent(row, view.viewer)),
     createdAt: b.createdAt.toISOString(),
     updatedAt: b.updatedAt.toISOString(),
   };
@@ -190,12 +239,13 @@ export function toAdminBookingView(
   view: ViewContext,
   events: BookingEvent[],
   hold: VehicleHold | null,
+  payments: AdminPayment[],
 ): AdminBooking {
   return {
     ...toBookingView(ctx, { ...view, viewer: 'admin' }, events),
     customerEmail: ctx.customer.email,
     providerEmail: ctx.owner.email,
     hold: hold ? toHold(hold) : null,
-    testingConfirmationEnabled: view.testingConfirmationEnabled,
+    payments,
   };
 }

@@ -1,8 +1,8 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { AuthSessionResponse, RegisterResponse } from '@vrp/contracts';
-import { users, type DatabaseHandle } from '@vrp/database';
-import { like } from 'drizzle-orm';
+import { bookings, users, type DatabaseHandle } from '@vrp/database';
+import { inArray, like } from 'drizzle-orm';
 import request, { type Response } from 'supertest';
 
 import { DATABASE_HANDLE } from '../../src/database/database.module';
@@ -134,9 +134,18 @@ export async function login(
 }
 
 /** Removes every e2e user created with the given scope prefix (cascades to tokens). */
+/**
+ * Deletes every user of a test scope. Bookings go first: deleting a customer together with the
+ * admin who resolved *and* refunded their payment in one statement makes PostgreSQL re-check
+ * `payments.booking_id` (the row was SET NULL-updated twice in the transaction) after the
+ * booking's cascade delete already ran, which fails. Driving the cascade from bookings avoids it.
+ */
 export async function cleanupUsers(app: INestApplicationContext, scope: string): Promise<void> {
   const handle = app.get<DatabaseHandle>(DATABASE_HANDLE);
-  await handle.db.delete(users).where(like(users.email, `e2e+${scope}-%`));
+  const pattern = `e2e+${scope}-%`;
+  const scoped = handle.db.select({ id: users.id }).from(users).where(like(users.email, pattern));
+  await handle.db.delete(bookings).where(inArray(bookings.customerUserId, scoped));
+  await handle.db.delete(users).where(like(users.email, pattern));
 }
 
 export function sleep(ms: number): Promise<void> {

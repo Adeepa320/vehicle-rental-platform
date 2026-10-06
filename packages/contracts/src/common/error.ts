@@ -39,6 +39,10 @@ export const ApiErrorCodeSchema = z.enum([
   'REQUEST_EXPIRED',
   'CONTACT_NOT_AVAILABLE_YET',
   'GRACE_PERIOD_NOT_ELAPSED',
+  // payments
+  'PAYMENT_WINDOW_EXPIRED',
+  'ALREADY_PAID',
+  'PAYMENT_GATEWAY_UNAVAILABLE',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

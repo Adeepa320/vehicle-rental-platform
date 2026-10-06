@@ -8,10 +8,14 @@ import { DATABASE } from '../../database/database.module';
 /** Booking timers and the reveal stage, as configured in `platform_settings` (DATABASE_DESIGN §6.12). */
 export interface BookingSettings {
   providerResponseHours: number;
-  /** Hours after acceptance to confirm (pay, in Phase 7) before the hold is released. */
+  /** Hours after acceptance to pay the advance before the hold is released. */
   paymentWindowHours: number;
   noShowGraceHours: number;
   contactRevealStage: 'accepted' | 'confirmed';
+  /** Percent of the rental subtotal paid online as the advance (TECH_DECISIONS D8, model B). */
+  advancePercentage: number;
+  /** Customer cancellations at least this many hours before pickup get the advance back in full. */
+  cancellationFullRefundHours: number;
 }
 
 export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
@@ -19,6 +23,8 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   paymentWindowHours: 24,
   noShowGraceHours: 3,
   contactRevealStage: 'confirmed',
+  advancePercentage: 10,
+  cancellationFullRefundHours: 48,
 };
 
 const KEYS = [
@@ -26,7 +32,10 @@ const KEYS = [
   'payment_window_hours',
   'no_show_grace_hours',
   'contact_reveal_stage',
+  'advance_percentage',
+  'cancellation_full_refund_hours',
 ] as const;
+const Percent = z.number().min(1).max(100);
 
 const Hours = z
   .number()
@@ -70,6 +79,12 @@ export class BookingSettingsService {
       paymentWindowHours: pick(Hours, byKey.get('payment_window_hours'), d.paymentWindowHours),
       noShowGraceHours: pick(Grace, byKey.get('no_show_grace_hours'), d.noShowGraceHours),
       contactRevealStage: pick(Stage, byKey.get('contact_reveal_stage'), d.contactRevealStage),
+      advancePercentage: pick(Percent, byKey.get('advance_percentage'), d.advancePercentage),
+      cancellationFullRefundHours: pick(
+        Hours,
+        byKey.get('cancellation_full_refund_hours'),
+        d.cancellationFullRefundHours,
+      ),
     };
     this.cached = { value, at: Date.now() };
     return value;

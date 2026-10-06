@@ -99,6 +99,20 @@
       "when": 1791058258407,
       "tag": "0013_booking_events_actor_null",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791285239260,
+      "tag": "0014_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791285242366,
+      "tag": "0015_payments_triggers",
+      "breakpoints": true
     }
   ]
 }

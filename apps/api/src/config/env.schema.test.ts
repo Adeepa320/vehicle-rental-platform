@@ -40,6 +40,53 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...base, PGBOSS_SCHEMA: 'Drop Table' })).toThrow(/PGBOSS_SCHEMA/);
   });
 
+  it('defaults to the fake payment gateway outside production and refuses it in production', () => {
+    expect(validateEnv(base).PAYMENT_GATEWAY).toBe('fake');
+    expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(/PAYMENT_GATEWAY/);
+  });
+
+  it('requires the PayHere merchant credentials whenever the PayHere gateway is selected', () => {
+    expect(() => validateEnv({ ...base, PAYMENT_GATEWAY: 'payhere' })).toThrow(
+      /PAYHERE_MERCHANT_ID/,
+    );
+    expect(() =>
+      validateEnv({ ...base, PAYMENT_GATEWAY: 'payhere', PAYHERE_MERCHANT_ID: '1211149' }),
+    ).toThrow(/PAYHERE_MERCHANT_SECRET/);
+    const env = validateEnv({
+      ...base,
+      PAYMENT_GATEWAY: 'payhere',
+      PAYHERE_MERCHANT_ID: '1211149',
+      PAYHERE_MERCHANT_SECRET: 'sandbox-secret-at-least-8',
+    });
+    expect(env.PAYHERE_ENVIRONMENT).toBe('sandbox');
+    expect(env.PAYHERE_NOTIFY_URL).toBeUndefined();
+  });
+
+  it('fails production start-up without PayHere secrets or a public notify URL', () => {
+    const production = {
+      ...base,
+      NODE_ENV: 'production',
+      PAYMENT_GATEWAY: 'payhere',
+      PAYHERE_ENVIRONMENT: 'live',
+      BOOKING_QUOTE_SECRET: 'q'.repeat(32),
+    };
+    expect(() => validateEnv(production)).toThrow(/PAYHERE_MERCHANT_ID/);
+    expect(() =>
+      validateEnv({
+        ...production,
+        PAYHERE_MERCHANT_ID: '1211149',
+        PAYHERE_MERCHANT_SECRET: 'live-secret-at-least-8',
+      }),
+    ).toThrow(/PAYHERE_NOTIFY_URL/);
+    expect(() =>
+      validateEnv({
+        ...production,
+        PAYHERE_MERCHANT_ID: '1211149',
+        PAYHERE_MERCHANT_SECRET: 'live-secret-at-least-8',
+        PAYHERE_NOTIFY_URL: 'not a url',
+      }),
+    ).toThrow(/PAYHERE_NOTIFY_URL/);
+  });
   it('ignores unrelated variables', () => {
     const env = validateEnv({ ...base, SOMETHING_ELSE: 'x' });
     expect('SOMETHING_ELSE' in env).toBe(false);

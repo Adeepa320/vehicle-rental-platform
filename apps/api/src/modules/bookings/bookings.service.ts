@@ -7,7 +7,9 @@ import {
   DECLINE_REASON_LABEL,
   MAX_BOOKING_HORIZON_DAYS,
   MIN_BOOKING_LEAD_HOURS,
+  compareAmounts,
   computeBookingPrice,
+  formatLkr,
   rentalDays,
   type AcceptBookingRequest,
   type AdminBooking,
@@ -20,7 +22,6 @@ import {
   type BookingQuoteQuery,
   type BookingViewer,
   type CancelBookingRequest,
-  type ConfirmBookingForTestingRequest,
   type CreateBookingRequest,
   type DeclineBookingRequest,
   type HandoverRequest,
@@ -61,6 +62,13 @@ import { isDeadlock, isExclusionViolation } from '../catalogue/catalogue.helpers
 import { VehiclePhotosService } from '../catalogue/vehicle-photos.service';
 import { toPublicPricing } from '../discovery/public.mappers';
 import { searchableCondition } from '../discovery/searchable';
+import { toAdminPayment } from '../payments/payment.mappers';
+import {
+  loadPaymentEventsFor,
+  loadPaymentsForBookings,
+  settlePaymentsOnCancellation,
+} from '../payments/payment.persistence';
+import { paymentCancellationRefundEmail } from '../notifications/email/payment-templates';
 import {
   bookingAcceptedEmail,
   bookingCancelledEmail,
@@ -137,7 +145,6 @@ export interface CreateBookingResult {
 @Injectable()
 export class BookingsService {
   private readonly webAppUrl: string;
-  readonly testingConfirmationEnabled: boolean;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -152,8 +159,6 @@ export class BookingsService {
   ) {
     this.logger.setContext(BookingsService.name);
     this.webAppUrl = config.get('WEB_APP_URL', { infer: true }).replace(/\/+$/, '');
-    // The Phase 6 bridge to `confirmed` without payment never exists in production.
-    this.testingConfirmationEnabled = config.get('NODE_ENV', { infer: true }) !== 'production';
   }
 
   // ================================================================ quote
@@ -164,7 +169,12 @@ export class BookingsService {
     const startsAt = new Date(query.startsAt);
     const endsAt = new Date(query.endsAt);
     const days = rentalDays(startsAt, endsAt);
-    const price = computeBookingPrice(toPublicPricing(row.vehicle), days);
+    const settings = await this.settings.get();
+    const price = computeBookingPrice(
+      toPublicPricing(row.vehicle),
+      days,
+      settings.advancePercentage,
+    );
     const reasons = this.ruleViolations(row.vehicle, startsAt, days, now);
     const conflicts = await overlappingHolds(this.db, row.vehicle.id, startsAt, endsAt);
     if (conflicts.length > 0) reasons.push('date_conflict');
@@ -270,7 +280,12 @@ export class BookingsService {
           })),
         );
       }
-      const price = computeBookingPrice(toPublicPricing(row.vehicle), days);
+      const settings = await this.settings.get();
+      const price = computeBookingPrice(
+        toPublicPricing(row.vehicle),
+        days,
+        settings.advancePercentage,
+      );
       const fingerprint = this.quotes.fingerprint(row.vehicle);
       if (
         payload.sub !== price.subtotal ||
@@ -295,7 +310,6 @@ export class BookingsService {
       }
 
       // 5. Insert the request (no hold), its driver snapshot and the first event.
-      const settings = await this.settings.get();
       const respondBy = new Date(
         Math.min(now.getTime() + settings.providerResponseHours * HOUR_MS, startsAt.getTime()),
       );
@@ -324,6 +338,9 @@ export class BookingsService {
           extraKmRate: price.extraKmRate,
           priceBreakdown: price.lines,
           pricingFingerprint: fingerprint,
+          advancePercentage: price.advancePercentage,
+          advanceAmount: price.advance,
+          balanceDueAmount: price.balanceDue,
           respondBy,
         })
         .returning();
@@ -444,7 +461,17 @@ export class BookingsService {
       holdOfBooking(this.db, id),
       this.viewContext(ctx, 'admin'),
     ]);
-    return toAdminBookingView(ctx, view, events, hold ?? null);
+    const eventsByPayment = await loadPaymentEventsFor(
+      this.db,
+      view.payments.map((p) => p.id),
+    );
+    return toAdminBookingView(
+      ctx,
+      view,
+      events,
+      hold ?? null,
+      view.payments.map((p) => toAdminPayment(p, eventsByPayment.get(p.id) ?? [])),
+    );
   }
 
   /**
@@ -693,11 +720,17 @@ export class BookingsService {
     meta: RequestMeta,
     now = new Date(),
   ): Promise<BookingView> {
+    const settings = await this.settings.get();
     await this.db.transaction(async (tx) => {
       const current = await this.lockOwn(tx, id, { providerId: provider.id });
       this.assertVersion(current, input.version);
       this.assertCanTransition(current, 'cancel_by_provider');
       const released = holdsVehicle(current.status) ? await releaseBookingHold(tx, id) : undefined;
+      const settlement = await settlePaymentsOnCancellation(tx, current, {
+        cancelledBy: 'provider',
+        fullRefundHours: settings.cancellationFullRefundHours,
+        now,
+      });
       const cancelled = await this.transition(tx, current, 'cancel_by_provider', {
         cancelledAt: now,
         cancelledBy: provider.userId,
@@ -710,7 +743,11 @@ export class BookingsService {
         action: 'booking.cancelled',
         fromStatus: current.status,
         toStatus: cancelled.status,
-        metadata: { by: 'provider', holdReleased: released !== undefined },
+        metadata: {
+          by: 'provider',
+          holdReleased: released !== undefined,
+          refundDueAmount: settlement.refundDueAmount,
+        },
       });
       const ctx = await this.contextOrThrow(tx, id);
       await this.email.enqueue(
@@ -719,6 +756,7 @@ export class BookingsService {
           cancelledBy: 'provider',
           counterpartName: ctx.provider.displayName,
           note: input.note ?? null,
+          refundNote: refundNoteFor(settlement),
         }),
         tx,
       );
@@ -871,11 +909,17 @@ export class BookingsService {
     meta: RequestMeta,
     now = new Date(),
   ): Promise<BookingView> {
+    const settings = await this.settings.get();
     await this.db.transaction(async (tx) => {
       const current = await this.lockOwn(tx, id, { customerUserId: customer.id });
       this.assertVersion(current, input.version);
       this.assertCanTransition(current, 'cancel_by_customer');
       const released = holdsVehicle(current.status) ? await releaseBookingHold(tx, id) : undefined;
+      const settlement = await settlePaymentsOnCancellation(tx, current, {
+        cancelledBy: 'customer',
+        fullRefundHours: settings.cancellationFullRefundHours,
+        now,
+      });
       const cancelled = await this.transition(tx, current, 'cancel_by_customer', {
         cancelledAt: now,
         cancelledBy: customer.id,
@@ -888,7 +932,11 @@ export class BookingsService {
         action: 'booking.cancelled',
         fromStatus: current.status,
         toStatus: cancelled.status,
-        metadata: { by: 'customer', holdReleased: released !== undefined },
+        metadata: {
+          by: 'customer',
+          holdReleased: released !== undefined,
+          refundDueAmount: settlement.refundDueAmount,
+        },
       });
       const ctx = await this.contextOrThrow(tx, id);
       await this.email.enqueue(
@@ -897,94 +945,119 @@ export class BookingsService {
           cancelledBy: 'customer',
           counterpartName: ctx.customer.fullName,
           note: input.note ?? null,
+          refundNote: null,
         }),
         tx,
       );
+      if (settlement.paidPaymentId) {
+        await this.email.enqueue(
+          paymentCancellationRefundEmail({
+            ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
+            refundDueAmount: settlement.refundDueAmount,
+            forfeited: settlement.forfeited,
+            fullRefundHours: settings.cancellationFullRefundHours,
+          }),
+          tx,
+        );
+      }
       this.logger.info({ bookingId: id, ip: meta.ip }, 'Booking cancelled by customer');
     });
     return this.viewFor(id, 'customer');
   }
 
-  // ========================================================== admin actions
+  // ======================================================== payment hook
 
   /**
-   * Temporary Phase 6 bridge (TECH_DECISIONS D51): moves an accepted booking to
-   * `confirmed` without any payment record. Disabled in production; replaced
-   * by the PayHere webhook in Phase 7. Audited like every admin decision.
+   * `accepted → confirmed` after a verified, matching, first-time successful
+   * advance payment (TECH_DECISIONS D55). Runs inside the payment transaction
+   * under the booking row lock. Returns the reason instead of throwing when the
+   * booking can no longer be confirmed, so the payment is still recorded as
+   * received and flagged for manual resolution. Replaces the Phase 6
+   * `confirm-for-testing` bridge (D56), which no longer exists.
    */
-  async confirmForTesting(
-    admin: AuthenticatedUser,
-    id: string,
-    input: ConfirmBookingForTestingRequest,
-    meta: RequestMeta,
-    now = new Date(),
-  ): Promise<AdminBooking> {
-    if (!this.testingConfirmationEnabled) {
-      throw new ApiException(
-        'FORBIDDEN',
-        'Testing confirmation is disabled in production; bookings are confirmed by payment',
-        403,
-      );
+  async confirmFromPayment(
+    tx: DatabaseExecutor,
+    bookingId: string,
+    payment: {
+      paymentId: string;
+      gateway: string;
+      gatewayPaymentId: string | null;
+      amount: string;
+    },
+    now: Date,
+  ): Promise<{ confirmed: true } | { confirmed: false; reason: string }> {
+    const current = await lockBooking(tx, bookingId);
+    if (!current) return { confirmed: false, reason: 'booking_missing' };
+    if (current.status !== 'accepted') {
+      return { confirmed: false, reason: `booking_${current.status}` };
     }
-    await this.db.transaction(async (tx) => {
-      const current = await this.lockOwn(tx, id);
-      this.assertVersion(current, input.version);
-      this.assertCanTransition(current, 'confirm_for_testing');
-      const hold = await holdOfBooking(tx, id);
-      if (!hold) {
-        throw new ApiException(
-          'INVALID_STATE_TRANSITION',
-          'The booking has no vehicle hold; it cannot be confirmed',
-          409,
-        );
-      }
-      const confirmed = await this.transition(tx, current, 'confirm_for_testing', {
-        confirmedAt: now,
-        confirmedBy: admin.id,
-        confirmationSource: 'admin_testing',
-      });
-      await recordBookingEvent(tx, {
-        bookingId: id,
-        actorType: 'admin',
-        actorUserId: admin.id,
-        action: 'booking.confirmed',
-        fromStatus: current.status,
-        toStatus: confirmed.status,
-        metadata: { source: 'admin_testing', holdId: hold.id },
-      });
-      await this.audit.record(
-        {
-          actorUserId: admin.id,
-          actorType: 'admin',
-          action: 'booking.confirmed_for_testing',
-          targetType: 'booking',
-          targetId: id,
-          reason: input.note ?? null,
-          ip: meta.ip ?? null,
-          metadata: { reference: current.reference },
-        },
-        tx,
-      );
-      const ctx = await this.contextOrThrow(tx, id);
-      await this.email.enqueue(
-        bookingConfirmedCustomerEmail({
-          ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
-          providerName: ctx.provider.displayName,
-          pickupAddress: ctx.location.addressText,
-          pickupInstructions: ctx.location.pickupInstructions,
-        }),
-        tx,
-      );
-      await this.email.enqueue(
-        bookingConfirmedProviderEmail({
-          ...bookingEmailBase(ctx, ctx.owner, this.providerLink(id)),
-          customerName: ctx.customer.fullName,
-        }),
-        tx,
-      );
-      this.logger.info({ bookingId: id, adminId: admin.id }, 'Booking confirmed for testing');
+    const hold = await holdOfBooking(tx, bookingId);
+    if (!hold) return { confirmed: false, reason: 'no_hold' };
+    if (compareAmounts(payment.amount, current.advanceAmount) !== 0) {
+      return { confirmed: false, reason: 'advance_mismatch' };
+    }
+    const confirmed = await this.transition(tx, current, 'confirm', {
+      confirmedAt: now,
+      confirmedBy: null,
+      confirmationSource: 'payment',
     });
-    return this.getForAdmin(id);
+    await recordBookingEvent(tx, {
+      bookingId,
+      actorType: 'system',
+      action: 'booking.confirmed',
+      fromStatus: current.status,
+      toStatus: confirmed.status,
+      // Stored in full for audit; customers and providers receive the allow-listed
+      // projection (source, gateway, amount, currency) — never the ids.
+      metadata: {
+        source: 'payment',
+        gateway: payment.gateway,
+        amount: payment.amount,
+        currency: current.currency,
+        paymentId: payment.paymentId,
+        holdId: hold.id,
+      },
+    });
+    await this.audit.record(
+      {
+        actorType: 'system',
+        action: 'booking.confirmed_by_payment',
+        targetType: 'booking',
+        targetId: bookingId,
+        metadata: {
+          paymentId: payment.paymentId,
+          gateway: payment.gateway,
+          amount: payment.amount,
+          reference: current.reference,
+        },
+      },
+      tx,
+    );
+    const ctx = await this.contextOrThrow(tx, bookingId);
+    await this.email.enqueue(
+      bookingConfirmedCustomerEmail({
+        ...bookingEmailBase(ctx, ctx.customer, this.customerLink(bookingId)),
+        providerName: ctx.provider.displayName,
+        pickupAddress: ctx.location.addressText,
+        pickupInstructions: ctx.location.pickupInstructions,
+        advancePaid: payment.amount,
+        balanceDue: current.balanceDueAmount,
+        securityDeposit: current.securityDepositAmount,
+      }),
+      tx,
+    );
+    await this.email.enqueue(
+      bookingConfirmedProviderEmail({
+        ...bookingEmailBase(ctx, ctx.owner, this.providerLink(bookingId)),
+        customerName: ctx.customer.fullName,
+      }),
+      tx,
+    );
+    this.logger.info(
+      { bookingId, paymentId: payment.paymentId, gateway: payment.gateway },
+      'Booking confirmed by payment',
+    );
+    return { confirmed: true };
   }
 
   // ============================================================== helpers
@@ -1013,8 +1086,14 @@ export class BookingsService {
       rows.map((row) => ({ ...row, createdAt: row.booking.createdAt, id: row.booking.id })),
       query.limit,
     );
-    const photos = await this.photos.listActiveFor(page.data.map((r) => r.vehicle.id));
-    const settings = await this.settings.get();
+    const [photos, settings, paymentsByBooking] = await Promise.all([
+      this.photos.listActiveFor(page.data.map((r) => r.vehicle.id)),
+      this.settings.get(),
+      loadPaymentsForBookings(
+        this.db,
+        page.data.map((r) => r.booking.id),
+      ),
+    ]);
     const now = new Date();
     return {
       data: page.data.map((row) =>
@@ -1022,7 +1101,7 @@ export class BookingsService {
           viewer,
           settings,
           now,
-          testingConfirmationEnabled: this.testingConfirmationEnabled,
+          payments: paymentsByBooking.get(row.booking.id) ?? [],
           thumbnailUrl: this.thumbnail(photos.get(row.vehicle.id)?.[0]?.publicPrefix),
         }),
       ),
@@ -1054,15 +1133,16 @@ export class BookingsService {
   }
 
   private async viewContext(ctx: BookingContext, viewer: BookingViewer): Promise<ViewContext> {
-    const [settings, photos] = await Promise.all([
+    const [settings, photos, paymentsByBooking] = await Promise.all([
       this.settings.get(),
       this.photos.listActiveFor([ctx.vehicle.id]),
+      loadPaymentsForBookings(this.db, [ctx.booking.id]),
     ]);
     return {
       viewer,
       settings,
       now: new Date(),
-      testingConfirmationEnabled: this.testingConfirmationEnabled,
+      payments: paymentsByBooking.get(ctx.booking.id) ?? [],
       thumbnailUrl: this.thumbnail(photos.get(ctx.vehicle.id)?.[0]?.publicPrefix),
     };
   }
@@ -1264,4 +1344,16 @@ const RULE_MESSAGES: Record<QuoteUnavailableReason, string> = {
 
 function whatsappLink(e164: string, message: string): string {
   return `https://wa.me/${e164.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+}
+
+/** Wording for the customer about the advance after a cancellation (null when nothing was paid). */
+function refundNoteFor(settlement: {
+  refundDueAmount: string | null;
+  forfeited: boolean;
+}): string | null {
+  if (settlement.refundDueAmount === null) return null;
+  if (settlement.forfeited) {
+    return 'Under the cancellation policy the advance you paid is not refundable.';
+  }
+  return `The advance of ${formatLkr(settlement.refundDueAmount)} you paid will be refunded; our team processes refunds manually and will e-mail you when it is done.`;
 }

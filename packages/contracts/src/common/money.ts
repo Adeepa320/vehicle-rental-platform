@@ -64,6 +64,27 @@ export function multiplyAmount(amount: string, factor: number): string {
   return centsToAmount(amountToCents(amount) * BigInt(factor));
 }
 
+/**
+ * `percent` of `amount`, rounded half-up to the cent, in integer arithmetic.
+ * `percent` accepts up to two decimals ("10", "12.5"). Used for the advance
+ * split (TECH_DECISIONS D8): advance = advance_percentage × rental subtotal.
+ */
+export function percentOfAmount(amount: string, percent: string | number): string {
+  const text = typeof percent === 'number' ? percent.toString() : percent.trim();
+  const match = /^(?<whole>\d{1,3})(?:\.(?<frac>\d{1,2}))?$/.exec(text);
+  if (!match?.groups) throw new Error(`Invalid percentage: ${text}`);
+  const { whole, frac = '' } = match.groups as { whole: string; frac?: string };
+  const basisPoints = BigInt(whole) * 100n + BigInt(frac.padEnd(2, '0'));
+  const cents = amountToCents(amount) * basisPoints;
+  // cents / 10_000 with half-up rounding (basis points: percent × 100; percent / 100 → ÷ 10_000).
+  return centsToAmount((cents + 5000n) / 10000n);
+}
+
+/** `a - b` as a canonical amount (may be negative when `b` is larger). */
+export function subtractAmounts(a: string, b: string): string {
+  return centsToAmount(amountToCents(a) - amountToCents(b));
+}
+
 /** Human display, e.g. "LKR 7,500" (whole rupees when there are no cents). */
 export function formatLkr(amount: string | null | undefined): string {
   if (amount === null || amount === undefined) return '—';

@@ -62,8 +62,8 @@ export default function AdminBookingsPage() {
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Bookings</h1>
         <p className="text-muted-foreground text-sm">
-          All booking requests, newest first. Confirmation without payment is a temporary testing
-          action (Phase 6) and is disabled in production.
+          All booking requests, newest first. Bookings are confirmed by the verified online advance;
+          payments that need a human are listed under Payments.
         </p>
       </header>
       <div className="flex flex-wrap gap-3">

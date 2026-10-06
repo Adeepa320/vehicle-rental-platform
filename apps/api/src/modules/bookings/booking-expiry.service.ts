@@ -11,6 +11,7 @@ import {
   bookingRequestExpiredEmail,
 } from '../notifications/email/booking-templates';
 import { EmailService } from '../notifications/email/email.service';
+import { cancelPendingPayments } from '../payments/payment.persistence';
 import {
   bookingEmailBase,
   loadBookingContext,
@@ -117,8 +118,11 @@ export class BookingExpiryService {
         return false;
       }
       const released = await releaseBookingHold(tx, id);
+      // An open checkout can no longer confirm this booking; a late success is handled as an anomaly.
+      const cancelledPayments = await cancelPendingPayments(tx, id, 'booking_expired', now);
       await this.markExpired(tx, id, current.version, 'expire_acceptance', now, {
         holdReleased: released !== undefined,
+        pendingPaymentsCancelled: cancelledPayments.length,
       });
       const ctx = await loadBookingContext(tx, eq(bookings.id, id));
       if (ctx) {

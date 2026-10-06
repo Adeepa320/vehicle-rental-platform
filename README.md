@@ -119,6 +119,17 @@ Root `.env` (copied from [`.env.example`](.env.example)) is read by Docker Compo
 | `BOOKING_QUOTE_SECRET`                                                                                      | _(unset → per-process secret; required in production, ≥ 32 chars)_ | API (signed quote tokens)          |
 | `BOOKING_QUOTE_TTL_MINUTES`                                                                                 | `15`                                                               | API                                |
 
+Payments (Phase 7):
+
+| Variable                                          | Default                                                                                             | Used by                                        |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `API_PUBLIC_URL`                                  | `http://localhost:4000/api/v1`                                                                      | API (gateway `notify_url`, fake checkout URL)  |
+| `PAYMENT_GATEWAY`                                 | `fake` (refused in production)                                                                      | API (`payhere` needs the merchant credentials) |
+| `PAYHERE_ENVIRONMENT`                             | `sandbox`                                                                                           | API (`live` for production)                    |
+| `PAYHERE_MERCHANT_ID` / `PAYHERE_MERCHANT_SECRET` | _(unset; required when `PAYMENT_GATEWAY=payhere`; the secret also signs the fake gateway when set)_ | API (never logged, never returned)             |
+| `PAYHERE_NOTIFY_URL`                              | _(unset → `API_PUBLIC_URL` + `/payments/payhere/notify`; must be public; required in production)_   | API                                            |
+| `PAYHERE_APP_ID` / `PAYHERE_APP_SECRET`           | _(unset → Retrieval / Refund API unavailable: admin reconcile and gateway refunds answer `503`)_    | API                                            |
+
 `apps/web/.env.local` (copied from [`apps/web/.env.example`](apps/web/.env.example)):
 
 | Variable                    | Default                                        | Used by                                |
@@ -127,7 +138,7 @@ Root `.env` (copied from [`.env.example`](.env.example)) is read by Docker Compo
 | `API_INTERNAL_URL`          | `http://localhost:4000/api/v1`                 | server rendering                       |
 | `NEXT_PUBLIC_MAP_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | browser (MapLibre style; free, no key) |
 
-Placeholders for later phases (SMS, storage, payments, field encryption, error tracking) are listed as comments in `.env.example` and are not read by any code yet.
+Placeholders for later phases (SMS, field encryption, error tracking) are listed as comments in `.env.example` and are not read by any code yet.
 
 ## Authentication flow (local)
 
@@ -177,15 +188,24 @@ Try it: approve a listing with photos, then open <http://localhost:3000/search> 
 
 ## Bookings (local)
 
-Phase 6 is the lean request-to-book loop **without payment** (TECH_DECISIONS D48–D52). Nothing is charged; the vehicle is reserved only when the provider accepts.
+Phase 6 is the lean request-to-book loop (TECH_DECISIONS D48–D52) and Phase 7 adds the online advance (D53–D56). The vehicle is reserved only when the provider accepts, and the booking is confirmed only when the advance has been paid and verified.
 
 1. **Request.** On a listing page pick dates → **Check price and availability** (`GET /vehicles/{slug}/quote`, a signed 15-minute price token) → **Request to book** → `/bookings/new` (log in if needed; the dates survive the redirect) → driver name, licence country and expiry, optional message → **Send booking request** (`POST /bookings` with an `Idempotency-Key`). The booking is `requested`; both parties get an e-mail (Mailpit). Several customers may request the same dates.
 2. **Provider inbox.** `/provider/bookings` → open the request → **Accept** (reserves the dates: a `kind = booking` row in `vehicle_holds`, created in one transaction; overlapping requests are declined automatically) or **Decline** with a reason. Requests not answered within 24 h (`platform_settings.provider_response_hours`) expire — run the worker (`pnpm dev:worker`) for the minute-by-minute sweep.
-3. **Confirmation (temporary).** Online payment arrives in Phase 7. Until then an administrator opens `/admin/bookings/[id]` and presses **Confirm for testing (no payment)** (`POST /admin/bookings/{id}/confirm-for-testing`; refused when `NODE_ENV=production`). Both sides are e-mailed; the customer now sees the exact pickup address and can reveal the provider's phone / e-mail / WhatsApp link, and vice versa. An accepted booking that is not confirmed within 24 h (`payment_window_hours`) expires and frees the dates.
+3. **Advance payment.** The customer's booking page shows the split (rental total, advance = 10 % to pay online, balance at pickup, refundable deposit) and **Pay advance securely** (`POST /bookings/{id}/payments/checkout`, amount decided by the server). The browser is handed to the gateway (locally: the fake gateway page served by the API, see [Payments](#payments-local)); the gateway notifies the API server-to-server, the API verifies the signature and confirms the booking in one transaction, and the browser lands on `/bookings/[id]/payment`, which polls until the verified result is in. Both sides are e-mailed; the customer now sees the exact pickup address and can reveal the provider's phone / e-mail / WhatsApp link, and vice versa. An accepted booking whose advance is not paid within 24 h (`payment_window_hours`) expires and frees the dates.
 4. **Pickup and return.** The provider records the handover (odometer, fuel, note → `active`) and later the return (→ `completed`; the hold stays as history). After the pickup time plus 3 h a confirmed booking can be marked **no-show**.
-5. **Cancellation.** Customers can cancel while requested / accepted / confirmed, providers while accepted / confirmed; the hold is released immediately. There are no fees or refunds in this release.
+5. **Cancellation.** Customers can cancel while requested / accepted / confirmed, providers while accepted / confirmed; the hold is released immediately. After the advance was paid: provider cancellation → full advance refund due; customer cancellation at least 48 h before pickup (`platform_settings.cancellation_full_refund_hours`) → full refund due; later → advance forfeited. Refunds are processed by the team and recorded by an admin (never automatic).
 
 Everything a booking goes through is visible in its timeline (`booking_events`, append-only) on all three booking pages.
+
+## Payments (local)
+
+Phase 7 collects only the **advance** (10 % of the rental, `platform_settings.advance_percentage`) online; the balance and the refundable deposit are paid to the provider at pickup (TECH_DECISIONS D8, D53–D56). All gateway code lives in `apps/api/src/modules/payments` behind `PaymentGateway`; card data never reaches the platform.
+
+- **Fake gateway (default).** With `PAYMENT_GATEWAY=fake` the **Pay advance securely** button posts the server-signed checkout fields to `POST /payments/fake/checkout`, a page served by the API that stands in for PayHere's hosted checkout. **Pay successfully** / **Cancel payment** / **Simulate a failed payment** send a correctly signed, PayHere-shaped notification through the real `POST /payments/payhere/notify` code path and redirect the browser to `/bookings/[id]/payment`. No credentials, no network, no card data. The fake routes answer `404` whenever the fake gateway is not active, and the environment schema refuses the fake gateway in production.
+- **PayHere sandbox.** Set `PAYMENT_GATEWAY=payhere`, `PAYHERE_ENVIRONMENT=sandbox`, the sandbox `PAYHERE_MERCHANT_ID` / `PAYHERE_MERCHANT_SECRET` (merchant portal; the secret is bound to the registered domain) and a **publicly reachable** `PAYHERE_NOTIFY_URL` (for example a `cloudflared` / `ngrok` tunnel in front of `http://localhost:4000/api/v1/payments/payhere/notify`). Without a public callback PayHere cannot confirm anything. This has **not** been executed for this repository yet (no merchant account); see ROADMAP Phase 7.
+- **What a verified success does.** In one transaction: payment `paid` (gateway payment id, status code, method), booking `accepted → confirmed` (`confirmation_source = payment`), `booking_events` + `audit_events` rows, confirmation e-mails. Replays are acknowledged and logged without side effects; forged or mismatched messages never touch the booking and are visible in `payment_events`. A payment that arrives after the booking expired or was cancelled is recorded as `paid` with a `late_success` anomaly and a refund due.
+- **Admin.** `/admin/bookings/[id]` shows every attempt (order id, gateway payment id, amount, status, anomaly, audit trail) with **Record refund** (manual: PayHere-portal or bank-transfer reference; gateway: Refund API when `PAYHERE_APP_ID` / `PAYHERE_APP_SECRET` are set), **Mark resolved** and **Check with gateway** (Retrieval API; `503` without credentials). `/admin/payments` lists everything flagged for manual resolution.
 
 ## Database workflow
 
@@ -217,6 +237,8 @@ Phase 5 suites: `vehicle-photos` (real images generated with sharp, EXIF strippi
 
 Phase 6 suites: `bookings` (quotes and tokens, request creation without a hold, validation of client prices / dates / stale quotes, idempotency incl. three parallel identical requests, accept with auto-decline, privacy and access scoping, the admin testing confirmation, contact reveal, pickup / return, decline, cancellation, expiry with an injected clock, no-show, lists, OpenAPI, the append-only trigger) and `bookings-concurrency` (parallel accepts, triple-click, accept vs concurrent block, block before accept, adjacent half-open windows, re-use after cancellation — all as real parallel HTTP requests against the database). Unit tests cover the state machine, the quote token service, booking references and the e-mail templates. E-mail assertions use `takeAllEmails` + `findEmail` when one action mails several recipients (the queue is FIFO and `takeEmailFor` drains it).
 
+Phase 7 suites: `payments` (money split on quotes and bookings; checkout ownership, state, deadline and reuse; forged, mismatched and unknown notifications; exactly-once confirmation under three parallel deliveries plus replays and a stale failure; failed and cancelled attempts with retry; expiry cancelling pending attempts and a late success recorded as an anomaly; the cancellation refund rule; admin refund / resolve / reconcile; OpenAPI; the append-only trigger). The `bookings` suite now confirms through the fake gateway (`payAdvance` in `test/utils/payment-helpers.ts`). Unit tests cover the PayHere checkout hash and `md5sig` with vectors in the documented format, notification parsing and status mapping, the state machine's `confirm` / `pay` rules and the money helpers. The test runner sets `PAYMENT_GATEWAY=fake`; runs against the PayHere sandbox are manual and need credentials plus a public `notify_url`.
+
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs install → lint → build → typecheck → migrate + seed → test → format check against a PostGIS service container. It needs no secrets. Deployment is intentionally not configured yet (see `docs/ARCHITECTURE.md` §13 for the planned hosting).
@@ -232,3 +254,6 @@ Phase 6 suites: `bookings` (quotes and tokens, request creation without a hold, 
 - **The map does not load** — results and listing pages work without it; check `NEXT_PUBLIC_MAP_STYLE_URL` (any MapLibre style JSON URL) and network access to the tile host.
 - **"JWT_PRIVATE_KEY … not set" warning** — expected locally; generate keys with `pnpm --filter @vrp/api keys:generate` for stable tokens across restarts.
 - **Test database missing** (older Docker volume) — `docker exec vehicle-rental-db psql -U postgres -c "CREATE DATABASE vehicle_rental_test;"`.
+- **"Pay advance securely" lands on a 404** — the fake gateway routes exist only while `PAYMENT_GATEWAY=fake` (never in production); the checkout URL is built from `API_PUBLIC_URL`, which must be how the browser reaches the API.
+- **A PayHere sandbox payment never confirms** — PayHere must reach `PAYHERE_NOTIFY_URL` from the internet; check the tunnel, then `payment_events` (`signature_valid`, `metadata.reason`) and the API log line `Payment notification rejected`. The browser's return URL never confirms a booking.
+- **A payment sits under `/admin/payments`** — it needs a human: a late or duplicate success (refund due), an amount mismatch, or a refund owed after a cancellation. Record the refund or mark it resolved; nothing is refunded automatically.

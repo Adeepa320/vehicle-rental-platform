@@ -105,12 +105,52 @@ export const envSchema = z
     /** How long a quoted price can be used to create a booking request (PRD FR-PR3: 15 minutes). */
     BOOKING_QUOTE_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(15),
 
+    // ---- payments (Phase 7, TECH_DECISIONS D53) ----
+    /** Public base URL of this API (gateway notify URL, the fake gateway's checkout page). */
+    API_PUBLIC_URL: z.url().default('http://localhost:4000/api/v1'),
+    /** `payhere` (hosted checkout) or `fake` (deterministic local gateway; refused in production). */
+    PAYMENT_GATEWAY: z.enum(['payhere', 'fake']).default('fake'),
+    PAYHERE_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
+    /** From the PayHere merchant portal (Integrations → Add Domain/App); the secret is per domain/app. */
+    PAYHERE_MERCHANT_ID: z.string().min(1).optional(),
+    PAYHERE_MERCHANT_SECRET: z.string().min(8).optional(),
+    /** Publicly reachable notify URL; defaults to `API_PUBLIC_URL` + `/payments/payhere/notify`. */
+    PAYHERE_NOTIFY_URL: z.url().optional(),
+    /** Merchant API app credentials (Retrieval / Refund APIs); optional. */
+    PAYHERE_APP_ID: z.string().min(1).optional(),
+    PAYHERE_APP_SECRET: z.string().min(1).optional(),
+
     // ---- developer tooling ----
     /** Serve Swagger UI at /api/docs. Defaults to true outside production. */
     OPENAPI_ENABLED: booleanString.optional(),
   })
   .superRefine((env, ctx) => {
+    if (
+      env.PAYMENT_GATEWAY === 'payhere' &&
+      (!env.PAYHERE_MERCHANT_ID || !env.PAYHERE_MERCHANT_SECRET)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PAYHERE_MERCHANT_ID'],
+        message:
+          'PAYHERE_MERCHANT_ID and PAYHERE_MERCHANT_SECRET are required when PAYMENT_GATEWAY=payhere',
+      });
+    }
     if (env.NODE_ENV === 'production') {
+      if (env.PAYMENT_GATEWAY !== 'payhere') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['PAYMENT_GATEWAY'],
+          message: 'the fake payment gateway is for tests and local development only',
+        });
+      }
+      if (!env.PAYHERE_NOTIFY_URL) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['PAYHERE_NOTIFY_URL'],
+          message: 'PAYHERE_NOTIFY_URL (publicly reachable) is required in production',
+        });
+      }
       if (!env.JWT_PRIVATE_KEY || !env.JWT_PUBLIC_KEY) {
         ctx.addIssue({
           code: 'custom',

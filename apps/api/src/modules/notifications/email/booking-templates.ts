@@ -227,14 +227,25 @@ export function bookingConfirmedCustomerEmail(
     providerName: string;
     pickupAddress: string;
     pickupInstructions: string | null;
+    /** The online advance that confirmed the booking (Phase 7); null for legacy confirmations. */
+    advancePaid?: string | null;
+    balanceDue?: string | null;
+    securityDeposit?: string | null;
   },
 ): EmailMessage {
   const subject = `Booking ${input.reference} confirmed: ${input.vehicleTitle}`;
+  const moneyLines = input.advancePaid
+    ? [
+        `Advance received online: ${formatLkr(input.advancePaid)}.`,
+        `Still to pay the provider at pickup: ${formatLkr(input.balanceDue ?? null)} rental balance plus the refundable deposit of ${formatLkr(input.securityDeposit ?? null)}.`,
+      ]
+    : [];
   const text = [
     `Hi ${input.fullName},`,
     '',
     `Your booking with ${input.providerName} is confirmed.`,
     ...summaryText(input),
+    ...moneyLines,
     '',
     `Pickup address: ${input.pickupAddress}`,
     ...(input.pickupInstructions ? [`Pickup instructions: ${input.pickupInstructions}`] : []),
@@ -247,6 +258,7 @@ export function bookingConfirmedCustomerEmail(
     `<p>Hi ${escapeHtml(input.fullName)},</p>
 <p>Your booking with <strong>${escapeHtml(input.providerName)}</strong> is confirmed.</p>
 ${summaryHtml(input)}
+${moneyLines.map((line) => `<p>${escapeHtml(line)}</p>`).join('')}
 <p><strong>Pickup address:</strong> ${escapeHtml(input.pickupAddress)}</p>
 ${input.pickupInstructions ? `<p><strong>Pickup instructions:</strong> ${escapeHtml(input.pickupInstructions)}</p>` : ''}
 <p>The provider’s phone number and e-mail are now visible on your booking page. Bring your driving licence and the deposit of the amount shown in the booking.</p>
@@ -286,19 +298,23 @@ export function bookingCancelledEmail(
     cancelledBy: 'customer' | 'provider';
     counterpartName: string;
     note: string | null;
+    /** For the customer when the provider cancels a paid booking: what happens to the advance. */
+    refundNote?: string | null;
   },
 ): EmailMessage {
   const subject = `Booking ${input.reference} was cancelled`;
   const lead =
     input.cancelledBy === 'customer'
       ? `${input.counterpartName} cancelled this booking. The dates are available again.`
-      : `${input.counterpartName} cancelled this booking. We are sorry for the inconvenience; you have not been charged.`;
+      : `${input.counterpartName} cancelled this booking. We are sorry for the inconvenience.`;
+  const refundNote = input.refundNote ?? null;
   const text = [
     `Hi ${input.fullName},`,
     '',
     lead,
     ...summaryText(input),
     ...(input.note ? ['', `Note: ${input.note}`] : []),
+    ...(refundNote ? ['', refundNote] : []),
     input.link,
   ].join('\n');
   const html = layout(
@@ -307,6 +323,7 @@ export function bookingCancelledEmail(
 <p>${escapeHtml(lead)}</p>
 ${summaryHtml(input)}
 ${input.note ? quote(input.note) : ''}
+${refundNote ? `<p><strong>${escapeHtml(refundNote)}</strong></p>` : ''}
 ${button(input.link, 'View booking')}`,
   );
   return { to: input.to, subject, text, html };

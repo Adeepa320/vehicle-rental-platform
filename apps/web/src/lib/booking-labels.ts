@@ -1,7 +1,10 @@
 import {
   DECLINE_REASON_LABEL,
   ProviderDeclineReasonSchema,
+  type BookingPaymentState,
   type BookingStatus,
+  type PaymentAnomaly,
+  type PaymentStatus,
   type ProviderDeclineReason,
 } from '@vrp/contracts';
 
@@ -25,9 +28,9 @@ export const BOOKING_STATUS: Record<
     label: 'Accepted',
     tone: 'default',
     customer:
-      'The provider accepted and the vehicle is reserved for you. Confirmation comes next; online payment is not available in this release.',
+      'The provider accepted and the vehicle is reserved for you. Pay the advance online by the deadline to confirm the booking.',
     provider:
-      'You accepted; the dates are reserved on your calendar. The booking is confirmed by the platform next.',
+      'You accepted; the dates are reserved on your calendar. The booking is confirmed once the customer pays the advance online.',
   },
   confirmed: {
     label: 'Confirmed',
@@ -111,6 +114,79 @@ export const EVENT_LABEL: Record<string, string> = {
   'booking.completed': 'Return recorded',
   'booking.no_show': 'Marked as no-show',
   'booking.contact_revealed': 'Contact details viewed',
+};
+
+/** Wording for the advance payment state (customer and provider pages). */
+export const PAYMENT_STATE: Record<
+  BookingPaymentState,
+  { label: string; tone: BadgeTone; customer: string; provider: string }
+> = {
+  not_started: {
+    label: 'Advance not paid',
+    tone: 'outline',
+    customer: 'Pay the advance online to confirm the booking.',
+    provider: 'Awaiting the customer’s advance.',
+  },
+  pending: {
+    label: 'Payment in progress',
+    tone: 'secondary',
+    customer: 'A payment was started. If you did not complete it, you can try again.',
+    provider: 'The customer started paying the advance.',
+  },
+  paid: {
+    label: 'Advance paid',
+    tone: 'default',
+    customer: 'The advance was received; the booking is confirmed.',
+    provider: 'Advance received by the platform; the booking is confirmed.',
+  },
+  failed: {
+    label: 'Payment failed',
+    tone: 'destructive',
+    customer: 'The last payment attempt failed. Nothing was charged; you can try again.',
+    provider: 'The customer’s last payment attempt failed.',
+  },
+  cancelled: {
+    label: 'Payment cancelled',
+    tone: 'outline',
+    customer: 'The last payment attempt was cancelled before it completed. You can try again.',
+    provider: 'The customer cancelled the last payment attempt.',
+  },
+  refund_due: {
+    label: 'Refund due',
+    tone: 'secondary',
+    customer: 'The advance will be refunded; our team processes refunds manually.',
+    provider: 'The advance is being refunded to the customer by the platform.',
+  },
+  forfeited: {
+    label: 'Advance not refundable',
+    tone: 'outline',
+    customer:
+      'The booking was cancelled too close to pickup, so under the cancellation policy the advance is not refunded.',
+    provider: 'The customer cancelled close to pickup; the advance is not refunded.',
+  },
+  refunded: {
+    label: 'Advance refunded',
+    tone: 'outline',
+    customer: 'The advance has been refunded.',
+    provider: 'The advance was refunded to the customer.',
+  },
+};
+
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  pending: 'Pending',
+  paid: 'Paid',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  refunded: 'Refunded',
+};
+
+export const PAYMENT_ANOMALY_LABEL: Record<PaymentAnomaly, string> = {
+  amount_mismatch: 'Amount did not match the booking',
+  currency_mismatch: 'Currency did not match the booking',
+  late_success: 'Paid after the booking had closed',
+  duplicate_payment: 'Paid twice for the same booking',
+  chargeback: 'Chargeback reported by the gateway',
+  refund_due: 'Refund due after cancellation',
 };
 
 /** Date and time in Sri Lanka time, e.g. "12 Nov 2026, 09:00". */

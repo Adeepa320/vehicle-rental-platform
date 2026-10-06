@@ -20,6 +20,7 @@ import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { EmailModule } from './modules/notifications/email/email.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { ReferenceModule } from './modules/reference/reference.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -64,6 +65,7 @@ import { UsersModule } from './modules/users/users.module';
     AvailabilityModule,
     DiscoveryModule,
     BookingsModule,
+    PaymentsModule,
     AdminModule,
   ],
   providers: [

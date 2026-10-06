@@ -81,7 +81,17 @@ export function PriceCard({ booking }: { booking: Booking }) {
           <dd className="font-semibold">{formatLkr(p.subtotal)}</dd>
         </div>
         <div className="contents">
-          <dt className="text-muted-foreground">Refundable deposit (at pickup)</dt>
+          <dt className="text-muted-foreground">
+            Advance paid online ({Number(p.advancePercentage)}% of the rental)
+          </dt>
+          <dd className="font-medium">{formatLkr(p.advance)}</dd>
+        </div>
+        <div className="contents">
+          <dt className="text-muted-foreground">Balance paid to the provider at pickup</dt>
+          <dd>{formatLkr(p.balanceDue)}</dd>
+        </div>
+        <div className="contents">
+          <dt className="text-muted-foreground">Refundable deposit (at pickup, returned after)</dt>
           <dd>{formatLkr(p.securityDeposit)}</dd>
         </div>
         <div className="contents">

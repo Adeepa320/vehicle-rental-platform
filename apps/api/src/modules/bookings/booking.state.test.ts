@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BOOKING_TRANSITIONS,
   allowedActions,
+  canPay,
   canTransition,
   contactAvailable,
   holdsVehicle,
@@ -20,7 +21,8 @@ const base = {
   now: new Date('2026-11-01T00:00:00.000Z'),
   noShowGraceHours: 3,
   revealStage: 'confirmed' as const,
-  testingConfirmationEnabled: true,
+  confirmBy: new Date('2026-11-02T00:00:00.000Z'),
+  paymentState: 'not_started' as const,
 };
 
 describe('booking state machine', () => {
@@ -31,7 +33,7 @@ describe('booking state machine', () => {
       auto_decline: ['requested'],
       expire_request: ['requested'],
       expire_acceptance: ['accepted'],
-      confirm_for_testing: ['accepted'],
+      confirm: ['accepted'],
       cancel_by_customer: ['requested', 'accepted', 'confirmed'],
       cancel_by_provider: ['accepted', 'confirmed'],
       pickup: ['confirmed'],
@@ -45,6 +47,11 @@ describe('booking state machine', () => {
         );
       }
     }
+  });
+
+  it('reaches confirmed only through the system (payment) action', () => {
+    expect(BOOKING_TRANSITIONS.confirm.actor).toBe('system');
+    expect(ACTIONS.filter((a) => BOOKING_TRANSITIONS[a].to === 'confirmed')).toEqual(['confirm']);
   });
 
   it('never leaves a terminal status', () => {
@@ -77,11 +84,32 @@ describe('booking state machine', () => {
     expect(contactAvailable('no_show', 'accepted')).toBe(false);
   });
 
-  it('offers the customer only cancel (and contact once revealed)', () => {
+  it('lets the customer pay only while accepted, before the deadline and until paid', () => {
+    expect(canPay({ ...base, status: 'accepted' })).toBe(true);
+    expect(canPay({ ...base, status: 'accepted', paymentState: 'pending' })).toBe(true);
+    expect(canPay({ ...base, status: 'accepted', paymentState: 'failed' })).toBe(true);
+    expect(canPay({ ...base, status: 'accepted', paymentState: 'cancelled' })).toBe(true);
+    expect(canPay({ ...base, status: 'accepted', paymentState: 'paid' })).toBe(false);
+    expect(canPay({ ...base, status: 'accepted', now: new Date('2026-11-03T00:00:00.000Z') })).toBe(
+      false,
+    );
+    expect(canPay({ ...base, status: 'accepted', confirmBy: null })).toBe(true);
+    for (const status of ALL.filter((s) => s !== 'accepted')) {
+      expect(canPay({ ...base, status }), status).toBe(false);
+    }
+  });
+
+  it('offers the customer pay / cancel / contact per state', () => {
     expect(allowedActions({ ...base, viewer: 'customer', status: 'requested' })).toEqual([
       'cancel',
     ]);
-    expect(allowedActions({ ...base, viewer: 'customer', status: 'accepted' })).toEqual(['cancel']);
+    expect(allowedActions({ ...base, viewer: 'customer', status: 'accepted' })).toEqual([
+      'pay',
+      'cancel',
+    ]);
+    expect(
+      allowedActions({ ...base, viewer: 'customer', status: 'accepted', paymentState: 'paid' }),
+    ).toEqual(['cancel']);
     expect(allowedActions({ ...base, viewer: 'customer', status: 'confirmed' })).toEqual([
       'cancel',
       'reveal_contact',
@@ -124,19 +152,9 @@ describe('booking state machine', () => {
     ).toContain('no_show');
   });
 
-  it('offers admins the testing confirmation only while accepted and only when enabled', () => {
-    expect(allowedActions({ ...base, viewer: 'admin', status: 'accepted' })).toEqual([
-      'confirm_for_testing',
-    ]);
-    expect(
-      allowedActions({
-        ...base,
-        viewer: 'admin',
-        status: 'accepted',
-        testingConfirmationEnabled: false,
-      }),
-    ).toEqual([]);
-    expect(allowedActions({ ...base, viewer: 'admin', status: 'requested' })).toEqual([]);
-    expect(allowedActions({ ...base, viewer: 'admin', status: 'confirmed' })).toEqual([]);
+  it('offers admins no booking actions (confirmation comes from payment)', () => {
+    for (const status of ALL) {
+      expect(allowedActions({ ...base, viewer: 'admin', status }), status).toEqual([]);
+    }
   });
 });

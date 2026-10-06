@@ -16,9 +16,9 @@ import {
   PriceCard,
   TimelineCard,
 } from '@/components/bookings/booking-parts';
+import { PayAdvanceButton, PaymentStateLine } from '@/components/bookings/payment-parts';
 import { Photo } from '@/components/public/photo';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRequireAuth } from '@/lib/auth/use-require-auth';
 import { BOOKING_STATUS, DECLINE_REASON_LABEL, formatDateTime } from '@/lib/booking-labels';
@@ -113,11 +113,19 @@ export default function CustomerBookingPage() {
               {booking.vehicle.registrationNumber}
             </p>
           ) : null}
+          {booking.status === 'accepted' || booking.payment.state !== 'not_started' ? (
+            <PaymentStateLine payment={booking.payment} audience="customer" />
+          ) : null}
+          {booking.status === 'accepted' && booking.confirmBy ? (
+            <p className="text-muted-foreground text-xs">
+              Pay the advance by {formatDateTime(booking.confirmBy)} (Sri Lanka time) to keep the
+              reservation. The balance and the refundable deposit are paid to the provider at
+              pickup.
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2 pt-1">
-            {booking.status === 'accepted' ? (
-              <Button disabled title="Online payment arrives in the next release">
-                Pay to confirm — coming next
-              </Button>
+            {can('pay') ? (
+              <PayAdvanceButton bookingId={booking.id} amount={booking.price.advance} />
             ) : null}
             {can('cancel') ? (
               <ReasonAction

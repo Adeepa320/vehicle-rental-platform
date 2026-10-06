@@ -121,25 +121,6 @@ export async function getProviderBooking(
     .expect(expected);
 }
 
-export async function adminBookingConfirm(
-  app: NestExpressApplication,
-  token: string,
-  id: string,
-  body: Record<string, unknown>,
-  expected?: number,
-): Promise<Response> {
-  const response = await request(app.getHttpServer())
-    .post(`/api/v1/admin/bookings/${id}/confirm-for-testing`)
-    .set(auth(token))
-    .send(body);
-  if (expected !== undefined && response.status !== expected) {
-    throw new Error(
-      `confirm-for-testing ${id}: expected ${expected}, got ${response.status} ${JSON.stringify(response.body)}`,
-    );
-  }
-  return response;
-}
-
 /**
  * Hands out non-overlapping day windows for one vehicle so tests never collide
  * on holds: each call returns `[startsAt, endsAt)` `length` days long, starting

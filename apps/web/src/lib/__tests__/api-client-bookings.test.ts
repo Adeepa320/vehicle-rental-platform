@@ -81,6 +81,9 @@ export function bookingFixture(overrides: Partial<Booking> = {}): Booking {
       weeklyRate: null,
       monthlyRate: null,
       subtotal: '22500.00',
+      advancePercentage: '10.00',
+      advance: '2250.00',
+      balanceDue: '20250.00',
       securityDeposit: '25000.00',
       includedKmPerDay: 100,
       includedKmTotal: 300,
@@ -113,6 +116,14 @@ export function bookingFixture(overrides: Partial<Booking> = {}): Booking {
       returnNote: null,
     },
     contact: { available: false, revealStage: 'confirmed' },
+    payment: {
+      state: 'not_started',
+      advanceAmount: '2250.00',
+      currency: 'LKR',
+      paidAt: null,
+      refundDueAmount: null,
+      refundedAt: null,
+    },
     allowedActions: ['cancel'],
     events: [],
     createdAt: '2026-11-01T04:30:00.000Z',
@@ -207,21 +218,22 @@ describe('api client (bookings)', () => {
     } satisfies Partial<ApiClientError>);
   });
 
-  it('calls the admin testing confirmation route', async () => {
-    const { api, calls } = fakeApi(200, {
+  it('reads an admin booking with its payments and no testing-confirmation action', async () => {
+    const { api } = fakeApi(200, {
       ...bookingFixture({
         status: 'confirmed',
         version: 3,
         viewer: 'admin',
-        confirmationSource: 'admin_testing',
+        confirmationSource: 'payment',
       }),
       customerEmail: 'nimal@example.com',
       providerEmail: 'sunil@example.com',
       hold: null,
-      testingConfirmationEnabled: true,
+      payments: [],
     });
-    const result = await api.admin.confirmBookingForTesting('t', ID, { version: 2 });
-    expect(result.testingConfirmationEnabled).toBe(true);
-    expect(callAt(calls, 0).url).toBe(`${BASE}/admin/bookings/${ID}/confirm-for-testing`);
+    const result = await api.admin.getBooking('t', ID);
+    expect(result.confirmationSource).toBe('payment');
+    expect(result.payments).toEqual([]);
+    expect(api.admin).not.toHaveProperty('confirmBookingForTesting');
   });
 });

@@ -1,12 +1,12 @@
 'use client';
 
-import type { AdminBooking } from '@vrp/contracts';
+import type { AdminBooking, AdminPayment } from '@vrp/contracts';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { AdminNav } from '@/components/admin/admin-nav';
-import { ReasonAction } from '@/components/admin/reason-action';
+import { AdminPaymentCard } from '@/components/admin/admin-payment-card';
 import { AuthCard, FormMessage } from '@/components/auth/form-primitives';
 import {
   BookingStatusBadge,
@@ -69,7 +69,15 @@ export default function AdminBookingPage() {
     );
   }
 
-  const canConfirm = booking.allowedActions.includes('confirm_for_testing');
+  const replacePayment = (updated: AdminPayment) =>
+    setBooking((current) =>
+      current
+        ? {
+            ...current,
+            payments: current.payments.map((p) => (p.id === updated.id ? updated : p)),
+          }
+        : current,
+    );
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-12">
@@ -95,36 +103,9 @@ export default function AdminBookingPage() {
         <p className="text-sm">{BOOKING_STATUS[booking.status].provider}</p>
       </header>
 
-      {booking.status === 'accepted' ? (
-        <FormMessage
-          variant={booking.testingConfirmationEnabled ? 'default' : 'destructive'}
-          title="Temporary testing action (Phase 6)"
-        >
-          Online payment is not implemented yet. This action moves the booking to “confirmed”
-          without any payment record so the rest of the flow can be exercised locally. It is
-          disabled in production and will be replaced by the payment confirmation in Phase 7.
-          {canConfirm ? (
-            <div className="mt-3">
-              <ReasonAction
-                label="Confirm for testing (no payment)"
-                confirmLabel="Confirm booking"
-                optional
-                placeholder="Optional note for the audit log"
-                onConfirm={async (note) => {
-                  setBooking(
-                    await withAccessToken((t) =>
-                      api.admin.confirmBookingForTesting(t, booking.id, {
-                        version: booking.version,
-                        note: note === '' ? null : note,
-                      }),
-                    ),
-                  );
-                }}
-              />
-            </div>
-          ) : (
-            <p className="mt-2 text-xs">Not available in this environment.</p>
-          )}
+      {booking.payments.some((p) => p.requiresManualResolution) ? (
+        <FormMessage variant="destructive" title="A payment needs manual resolution">
+          See the Payments card below: record the refund or mark it resolved once handled.
         </FormMessage>
       ) : null}
 
@@ -163,6 +144,22 @@ export default function AdminBookingPage() {
           </dl>
         </AuthCard>
         <PriceCard booking={booking} />
+        <div className="lg:col-span-2">
+          <AuthCard
+            title="Payments"
+            description="Online advance attempts for this booking: order ids, gateway references, verified callback results and refunds. Card data never reaches the platform."
+          >
+            {booking.payments.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No payment attempt yet.</p>
+            ) : (
+              <div className="grid gap-3">
+                {booking.payments.map((payment) => (
+                  <AdminPaymentCard key={payment.id} payment={payment} onChanged={replacePayment} />
+                ))}
+              </div>
+            )}
+          </AuthCard>
+        </div>
         <PickupCard booking={booking} />
         <DriverCard booking={booking} />
         <HandoverCard booking={booking} />

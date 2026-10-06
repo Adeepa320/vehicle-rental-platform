@@ -31,6 +31,8 @@ export function configureApp(app: NestExpressApplication): void {
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
   // JSON bodies are small by design; files go directly to object storage (Phase 3+).
   app.useBodyParser('json', { limit: '256kb' });
+  // PayHere posts its payment notification as a classic form (Phase 7).
+  app.useBodyParser('urlencoded', { extended: false, limit: '64kb' });
   app.enableShutdownHooks();
 
   const openApiEnabled =

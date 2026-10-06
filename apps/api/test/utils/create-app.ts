@@ -25,6 +25,10 @@ export const TEST_ENV_DEFAULTS: Record<string, string> = {
   STORAGE_PROVIDER: 'memory',
   STORAGE_PUBLIC_URL: 'http://storage.test/vrp-public',
   OPENAPI_ENABLED: 'true',
+  // Deterministic payment gateway: PayHere adapter with a known fake secret (see payment-helpers.ts).
+  PAYMENT_GATEWAY: 'fake',
+  PAYHERE_MERCHANT_SECRET: 'e2e-fake-merchant-secret-32-characters!',
+  API_PUBLIC_URL: 'http://api.test/api/v1',
 };
 
 /** Connection URL of the dedicated test database, if configured. */

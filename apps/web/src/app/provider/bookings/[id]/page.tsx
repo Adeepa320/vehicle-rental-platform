@@ -2,6 +2,7 @@
 
 import {
   DeclineBookingRequestSchema,
+  formatLkr,
   type Booking,
   type HandoverRequest,
   type ProviderDeclineReason,
@@ -22,6 +23,7 @@ import {
   TimelineCard,
 } from '@/components/bookings/booking-parts';
 import { HandoverForm } from '@/components/bookings/handover-form';
+import { PaymentStateLine } from '@/components/bookings/payment-parts';
 import { ProviderNav } from '@/components/provider/provider-nav';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -127,10 +129,14 @@ export default function ProviderBookingPage() {
             that overlap these dates.
           </p>
         ) : null}
+        {booking.status === 'accepted' || booking.payment.state !== 'not_started' ? (
+          <PaymentStateLine payment={booking.payment} audience="provider" />
+        ) : null}
         {booking.status === 'accepted' && booking.confirmBy ? (
           <p className="text-muted-foreground text-xs">
-            Reserved on your calendar. If the booking is not confirmed by{' '}
-            {formatDateTime(booking.confirmBy)}, the reservation is released automatically.
+            Reserved on your calendar. If the advance is not paid by{' '}
+            {formatDateTime(booking.confirmBy)}, the reservation is released automatically. You
+            collect the balance of {formatLkr(booking.price.balanceDue)} and the deposit at pickup.
           </p>
         ) : null}
         {booking.customerNote ? (

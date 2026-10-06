@@ -6,7 +6,10 @@ import {
   LkrAmountSchema,
   SettlementCurrencySchema,
   normalizeAmount,
+  percentOfAmount,
+  subtractAmounts,
 } from '../common/money';
+import { AdminPaymentSchema, BookingPaymentSummarySchema } from '../payments/payment';
 import {
   MAX_SEARCH_DAYS,
   MAX_SEARCH_HORIZON_DAYS,
@@ -102,7 +105,8 @@ export const BookingActionSchema = z.enum([
   'return',
   'no_show',
   'reveal_contact',
-  'confirm_for_testing',
+  /** Customer may start (or retry) the online advance payment. */
+  'pay',
 ]);
 export type BookingAction = z.infer<typeof BookingActionSchema>;
 
@@ -174,8 +178,11 @@ export type PriceLine = z.infer<typeof PriceLineSchema>;
 
 /**
  * The price snapshot stored on a booking and shown in a quote. Only the rental
- * itself is priced in Phase 6; the deposit, fuel, delivery and extra kilometres
- * are settled with the provider in person (no commission or fee is added).
+ * itself is priced; the deposit, fuel, delivery and extra kilometres are
+ * settled with the provider in person. The money split (TECH_DECISIONS D8,
+ * model B): `advance` (= `advancePercentage` of `subtotal`) is paid online to
+ * the platform; `balanceDue` (= `subtotal` − `advance`) is paid to the
+ * provider at pickup; the deposit is separate and refundable.
  */
 export const BookingPriceSchema = z.object({
   currency: SettlementCurrencySchema,
@@ -188,6 +195,12 @@ export const BookingPriceSchema = z.object({
   subtotal: LkrAmountSchema,
   /** Refundable, paid to the provider at pickup; not part of `subtotal`. */
   securityDeposit: LkrAmountSchema,
+  /** Percent of `subtotal` paid online (platform setting `advance_percentage` at request time), e.g. "10.00". */
+  advancePercentage: z.string().regex(/^\d{1,3}\.\d{2}$/),
+  /** Paid online after acceptance; confirms the booking. */
+  advance: LkrAmountSchema,
+  /** Paid to the provider at pickup (`subtotal − advance`). */
+  balanceDue: LkrAmountSchema,
   includedKmPerDay: z.number().int().nullable(),
   includedKmTotal: z.number().int().nullable(),
   extraKmRate: LkrAmountSchema.nullable(),
@@ -196,11 +209,27 @@ export const BookingPriceSchema = z.object({
 export type BookingPrice = z.infer<typeof BookingPriceSchema>;
 
 export const BOOKING_PRICE_NOTE =
-  'Rental price at the provider’s listed rates. The refundable deposit, fuel, delivery and extra kilometres are settled with the provider at pickup and return. Nothing is paid online in this release.';
+  'Rental price at the provider’s listed rates. The advance is paid online and confirms the booking; the balance, the refundable deposit, fuel, delivery and extra kilometres are settled with the provider at pickup and return.';
+
+/** Seeded `advance_percentage` (DATABASE_DESIGN §6.12); the API reads the live setting. */
+export const DEFAULT_ADVANCE_PERCENTAGE = 10;
+
+/** `percent` as the two-decimal string stored on bookings ("10" → "10.00"). */
+export function normalizePercentage(percent: string | number): string {
+  const text = typeof percent === 'number' ? percent.toString() : percent.trim();
+  const match = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(text);
+  if (!match) throw new Error(`Invalid percentage: ${text}`);
+  return `${match[1]}.${(match[2] ?? '').padEnd(2, '0')}`;
+}
 
 /** Deterministic price for a period from the listed rates (same tiers as the public estimate). */
-export function computeBookingPrice(pricing: PublicPricing, rentalDays: number): BookingPrice {
+export function computeBookingPrice(
+  pricing: PublicPricing,
+  rentalDays: number,
+  advancePercentage: string | number = DEFAULT_ADVANCE_PERCENTAGE,
+): BookingPrice {
   const estimate = estimateRental(pricing, rentalDays);
+  const advance = percentOfAmount(estimate.subtotal, advancePercentage);
   const basisLabel =
     estimate.basis === 'daily'
       ? 'daily rate'
@@ -216,6 +245,9 @@ export function computeBookingPrice(pricing: PublicPricing, rentalDays: number):
     monthlyRate: pricing.monthlyRate ? normalizeAmount(pricing.monthlyRate) : null,
     subtotal: estimate.subtotal,
     securityDeposit: normalizeAmount(pricing.securityDeposit),
+    advancePercentage: normalizePercentage(advancePercentage),
+    advance,
+    balanceDue: subtractAmounts(estimate.subtotal, advance),
     includedKmPerDay: pricing.includedKmPerDay,
     includedKmTotal:
       pricing.includedKmPerDay === null ? null : pricing.includedKmPerDay * rentalDays,
@@ -348,13 +380,6 @@ export const NoShowBookingRequestSchema = z.strictObject({
   note: z.string().trim().min(5).max(MAX_BOOKING_REASON_NOTE_CHARS),
 });
 export type NoShowBookingRequest = z.infer<typeof NoShowBookingRequestSchema>;
-
-/** Temporary Phase 6 bridge: admin confirms an accepted booking without payment (non-production only). */
-export const ConfirmBookingForTestingRequestSchema = z.strictObject({
-  version: Version,
-  note: ShortNote,
-});
-export type ConfirmBookingForTestingRequest = z.infer<typeof ConfirmBookingForTestingRequestSchema>;
 
 // ------------------------------------------------------------------- lists
 
@@ -496,10 +521,12 @@ export const BookingSchema = z.object({
   declineNote: z.string().nullable(),
   cancellationNote: z.string().nullable(),
   noShowNote: z.string().nullable(),
-  /** How the booking became `confirmed`; only the testing bridge exists in Phase 6. */
-  confirmationSource: z.enum(['admin_testing']).nullable(),
+  /** How the booking became `confirmed`: a verified online payment, or (legacy Phase 6 rows) the retired admin testing bridge. */
+  confirmationSource: z.enum(['payment', 'admin_testing']).nullable(),
   handover: BookingHandoverSchema,
   contact: BookingContactStateSchema,
+  /** The online advance, as far as this viewer may know. */
+  payment: BookingPaymentSummarySchema,
   allowedActions: z.array(BookingActionSchema),
   events: z.array(BookingEventSchema),
   createdAt: z.iso.datetime(),
@@ -534,13 +561,12 @@ export const BookingContactSchema = z.object({
 });
 export type BookingContact = z.infer<typeof BookingContactSchema>;
 
-/** Admin inspection view: everything plus the hold and both parties' e-mail. */
+/** Admin inspection view: everything plus the hold, both parties' e-mail and the payment attempts. */
 export const AdminBookingSchema = BookingSchema.extend({
   customerEmail: z.string(),
   providerEmail: z.string(),
   hold: VehicleHoldSchema.nullable(),
-  /** Whether `POST /admin/bookings/{id}/confirm-for-testing` is enabled in this environment. */
-  testingConfirmationEnabled: z.boolean(),
+  payments: z.array(AdminPaymentSchema),
 });
 export type AdminBooking = z.infer<typeof AdminBookingSchema>;
 

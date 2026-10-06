@@ -11,3 +11,4 @@ export * from './audit-events';
 export * from './vehicles';
 export * from './vehicle-photos';
 export * from './bookings';
+export * from './payments';

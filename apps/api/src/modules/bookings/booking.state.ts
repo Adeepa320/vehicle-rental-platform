@@ -3,6 +3,7 @@ import {
   TERMINAL_BOOKING_STATUSES,
   type BookingAction,
   type BookingActorType,
+  type BookingPaymentState,
   type BookingStatus,
   type BookingViewer,
 } from '@vrp/contracts';
@@ -12,13 +13,14 @@ import {
  * every transition is checked the same way: the service runs a
  * status-conditioned `UPDATE … WHERE status IN (from) AND version = $v`.
  *
- *   requested ──accept (provider, creates hold)──▶ accepted ──confirm_for_testing (admin)──▶ confirmed ──pickup──▶ active ──return──▶ completed
+ *   requested ──accept (provider, creates hold)──▶ accepted ──confirm (verified advance payment)──▶ confirmed ──pickup──▶ active ──return──▶ completed
  *       │  ├── decline / auto_decline ──▶ declined          │  └── expire_acceptance (releases hold)   ├── no_show (after grace, releases hold)
  *       │  ├── expire_request ─────────▶ expired            │                                          └── cancel_by_* (releases hold)
  *       │  └── cancel_by_customer ────▶ cancelled_by_customer
  *       └── (accepted | confirmed) ── cancel_by_customer / cancel_by_provider (release hold)
  *
- * Payment (Phase 7) replaces `confirm_for_testing` with the PayHere webhook.
+ * `confirm` is reached only through `BookingsService.confirmFromPayment`, called
+ * by the payments module after a verified successful notification (Phase 7).
  */
 export type BookingTransitionAction =
   | 'accept'
@@ -26,7 +28,7 @@ export type BookingTransitionAction =
   | 'auto_decline'
   | 'expire_request'
   | 'expire_acceptance'
-  | 'confirm_for_testing'
+  | 'confirm'
   | 'cancel_by_customer'
   | 'cancel_by_provider'
   | 'pickup'
@@ -79,10 +81,11 @@ export const BOOKING_TRANSITIONS: Readonly<Record<BookingTransitionAction, Booki
     createsHold: false,
     releasesHold: true,
   },
-  confirm_for_testing: {
+  /** Verified successful advance payment (Phase 7); the only way to `confirmed`. */
+  confirm: {
     from: ['accepted'],
     to: 'confirmed',
-    actor: 'admin',
+    actor: 'system',
     createsHold: false,
     releasesHold: false,
   },
@@ -152,14 +155,26 @@ export interface AllowedActionsContext {
   now: Date;
   noShowGraceHours: number;
   revealStage: BookingStatus;
-  /** `POST /admin/bookings/{id}/confirm-for-testing` is enabled (never in production). */
-  testingConfirmationEnabled: boolean;
+  /** Payment deadline while `accepted` (null before acceptance). */
+  confirmBy: Date | null;
+  /** The advance as the booking's payment summary reports it. */
+  paymentState: BookingPaymentState;
+}
+
+/** The customer may start or retry the advance while accepted, before the deadline, and not yet paid. */
+export function canPay(
+  ctx: Pick<AllowedActionsContext, 'status' | 'now' | 'confirmBy' | 'paymentState'>,
+): boolean {
+  if (ctx.status !== 'accepted') return false;
+  if (ctx.confirmBy !== null && ctx.confirmBy <= ctx.now) return false;
+  return ['not_started', 'pending', 'failed', 'cancelled'].includes(ctx.paymentState);
 }
 
 /** The actions a client may offer this viewer right now (API_DESIGN §10.3 `allowedActions`). */
 export function allowedActions(ctx: AllowedActionsContext): BookingAction[] {
   const actions: BookingAction[] = [];
   if (ctx.viewer === 'customer') {
+    if (canPay(ctx)) actions.push('pay');
     if (canTransition('cancel_by_customer', ctx.status)) actions.push('cancel');
   }
   if (ctx.viewer === 'provider') {
@@ -173,11 +188,6 @@ export function allowedActions(ctx: AllowedActionsContext): BookingAction[] {
       noShowAllowedAt(ctx.startsAt, ctx.noShowGraceHours) <= ctx.now
     ) {
       actions.push('no_show');
-    }
-  }
-  if (ctx.viewer === 'admin') {
-    if (ctx.testingConfirmationEnabled && canTransition('confirm_for_testing', ctx.status)) {
-      actions.push('confirm_for_testing');
     }
   }
   if (ctx.viewer !== 'admin' && contactAvailable(ctx.status, ctx.revealStage)) {

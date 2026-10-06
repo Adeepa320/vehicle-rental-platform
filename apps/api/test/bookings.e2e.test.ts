@@ -35,7 +35,6 @@ import {
 } from './utils/auth-helpers';
 import {
   TEST_DRIVER,
-  adminBookingConfirm,
   createBooking,
   getBooking,
   getProviderBooking,
@@ -45,6 +44,7 @@ import {
   windowAllocator,
 } from './utils/booking-helpers';
 import { createTestApp, testDatabaseUrl } from './utils/create-app';
+import { createCheckout, payAdvance } from './utils/payment-helpers';
 import {
   newAdmin,
   newVerifiedUser,
@@ -501,15 +501,14 @@ describe.skipIf(!url)('bookings (lean lifecycle)', () => {
         { version: 2 },
         403,
       );
-      const asProvider = await adminBookingConfirm(
-        app,
-        provider.body.accessToken,
-        a.id,
-        { version: 2 },
-        403,
-      );
-      expect(asProvider.body.error.code).toBe('FORBIDDEN');
-      await adminBookingConfirm(app, customerA.body.accessToken, a.id, { version: 2 }, 403);
+      // Only the booking's customer can start the advance payment; the Phase 6 bridge is gone.
+      await createCheckout(app, provider.body.accessToken, a.id, 404);
+      await createCheckout(app, customerB.body.accessToken, a.id, 404);
+      await request(app.getHttpServer())
+        .post(`/api/v1/admin/bookings/${a.id}/confirm-for-testing`)
+        .set(auth(admin.body.accessToken))
+        .send({ version: 2 })
+        .expect(404);
 
       for (const token of [customerA.body.accessToken, provider.body.accessToken]) {
         const contact = await request(app.getHttpServer())
@@ -531,38 +530,46 @@ describe.skipIf(!url)('bookings (lean lifecycle)', () => {
       expect(JSON.stringify(theirs)).not.toContain(customerA.email);
     });
 
-    it('is confirmed by the admin testing bridge; both sides then see exact details and contact', async () => {
-      const confirmed = await adminBookingConfirm(app, admin.body.accessToken, a.id, {
-        version: 2,
-        note: 'Local test run',
+    it('is confirmed by a verified advance payment; both sides then see exact details and contact', async () => {
+      const { booking: paid, checkout } = await payAdvance(app, customerA.body.accessToken, a.id);
+      expect(checkout.amount).toBe('2250.00');
+      expect(paid).toMatchObject({
+        status: 'confirmed',
+        version: 3,
+        confirmationSource: 'payment',
+        payment: { state: 'paid', advanceAmount: '2250.00' },
       });
-      expect(confirmed.status).toBe(200);
+      const confirmed = await request(app.getHttpServer())
+        .get(`/api/v1/admin/bookings/${a.id}`)
+        .set(auth(admin.body.accessToken))
+        .expect(200);
       expect(AdminBookingSchema.safeParse(confirmed.body).success).toBe(true);
       expect(confirmed.body).toMatchObject({
         status: 'confirmed',
-        version: 3,
         viewer: 'admin',
-        confirmationSource: 'admin_testing',
+        confirmationSource: 'payment',
         customerEmail: customerA.email,
         providerEmail: provider.email,
-        testingConfirmationEnabled: true,
       });
       expect(confirmed.body.hold).toMatchObject({ kind: 'booking', vehicleId: vehicle.id });
+      expect(confirmed.body.payments).toHaveLength(1);
+      expect(confirmed.body.payments[0]).toMatchObject({
+        status: 'paid',
+        amount: '2250.00',
+        gateway: 'fake',
+      });
       const audit = await handle.db
         .select()
         .from(auditEvents)
         .where(and(eq(auditEvents.targetType, 'booking'), eq(auditEvents.targetId, a.id)));
-      expect(audit.map((e) => e.action)).toEqual(['booking.confirmed_for_testing']);
-      expect(audit[0]).toMatchObject({
-        actorType: 'admin',
-        actorUserId: admin.userId,
-        reason: 'Local test run',
-      });
+      expect(audit.map((e) => e.action)).toEqual(['booking.confirmed_by_payment']);
+      expect(audit[0]).toMatchObject({ actorType: 'system', actorUserId: null });
 
       const mails = await takeAllEmails(app);
       const customerMail = findEmail(mails, customerA.email, 'confirmed');
       expect(customerMail?.text).toContain('12 Beach Road');
       expect(customerMail?.text).toContain('Blue gate');
+      expect(customerMail?.text).toContain('Advance received online: LKR 2,250');
       expect(findEmail(mails, provider.email, 'confirmed')?.text).toContain('Nimal Perera');
 
       const mine = (await getBooking(app, customerA.body.accessToken, a.id)).body as Booking;
@@ -599,21 +606,13 @@ describe.skipIf(!url)('bookings (lean lifecycle)', () => {
       expect(theirs.customer.name).toBe('Nimal Perera');
       expect(theirs.events.filter((e) => e.action === 'booking.contact_revealed')).toHaveLength(2);
 
-      const again = await adminBookingConfirm(
-        app,
-        admin.body.accessToken,
-        a.id,
-        { version: 3 },
-        409,
-      );
-      expect(again.body.error.code).toBe('INVALID_STATE_TRANSITION');
-      const stale = await adminBookingConfirm(
-        app,
-        admin.body.accessToken,
-        a.id,
-        { version: 2 },
-        409,
-      );
+      const again = await createCheckout(app, customerA.body.accessToken, a.id);
+      expect(again.status).toBe(409);
+      expect(again.body.error.code).toBe('ALREADY_PAID');
+      const stale = await providerBookingAction(app, provider.body.accessToken, a.id, 'pickup', {
+        version: 2,
+      });
+      expect(stale.status).toBe(409);
       expect(stale.body.error.code).toBe('STALE_VERSION');
     });
 
@@ -788,7 +787,7 @@ describe.skipIf(!url)('bookings (lean lifecycle)', () => {
       { version: 1 },
       200,
     );
-    await adminBookingConfirm(app, admin.body.accessToken, a2.id, { version: 2 }, 200);
+    await payAdvance(app, customerA.body.accessToken, a2.id);
     await takeEmailFor(app, customerA.email, 'confirmed');
     const byProvider = await providerBookingAction(
       app,
@@ -935,7 +934,7 @@ describe.skipIf(!url)('bookings (lean lifecycle)', () => {
       { version: 1 },
       200,
     );
-    await adminBookingConfirm(app, admin.body.accessToken, a.id, { version: 2 }, 200);
+    await payAdvance(app, customerA.body.accessToken, a.id);
     const tooEarly = await providerBookingAction(app, provider.body.accessToken, a.id, 'no-show', {
       version: 3,
       note: 'Called three times, no answer',
@@ -1058,9 +1057,13 @@ describe.skipIf(!url)('bookings (lean lifecycle)', () => {
       '/api/v1/providers/me/bookings/{id}/pickup',
       '/api/v1/providers/me/bookings/{id}/return',
       '/api/v1/providers/me/bookings/{id}/no-show',
-      '/api/v1/admin/bookings/{id}/confirm-for-testing',
+      '/api/v1/bookings/{id}/payments/checkout',
+      '/api/v1/bookings/{id}/payments',
+      '/api/v1/payments/payhere/notify',
+      '/api/v1/admin/payments/{id}/refund',
     ]) {
       expect(paths, path).toContain(path);
     }
+    expect(paths).not.toContain('/api/v1/admin/bookings/{id}/confirm-for-testing');
   });
 });

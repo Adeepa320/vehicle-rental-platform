@@ -1,6 +1,8 @@
 import {
   AdminBookingListSchema,
   AdminBookingSchema,
+  AdminPaymentListItemSchema,
+  AdminPaymentListSchema,
   AdminProviderApplicationListSchema,
   AdminProviderApplicationSchema,
   AdminProviderDetailSchema,
@@ -11,6 +13,9 @@ import {
   AuthSessionResponseSchema,
   BookingContactSchema,
   BookingListSchema,
+  CheckoutSessionSchema,
+  PaymentListSchema,
+  PaymentReconciliationSchema,
   BookingQuoteSchema,
   BookingSchema,
   DistrictSchema,
@@ -39,6 +44,8 @@ import {
   type AcceptBookingRequest,
   type AdminBooking,
   type AdminBookingList,
+  type AdminPaymentList,
+  type AdminPaymentListItem,
   type AdminProviderApplication,
   type AdminProviderApplicationList,
   type AdminProviderDetail,
@@ -54,7 +61,7 @@ import {
   type BookingScope,
   type BookingStatus,
   type CancelBookingRequest,
-  type ConfirmBookingForTestingRequest,
+  type CheckoutSession,
   type CreateAvailabilityBlockRequest,
   type CreateBookingRequest,
   type CreateProviderLocationRequest,
@@ -66,6 +73,8 @@ import {
   type LoginRequest,
   type MessageResponse,
   type NoShowBookingRequest,
+  type PaymentList,
+  type PaymentReconciliation,
   type PlaceSuggestion,
   type PlaceSummary,
   type ProviderApplication,
@@ -76,8 +85,10 @@ import {
   type ProviderStatus,
   type PublicVehicleDetail,
   type ReadyResponse,
+  type RecordRefundRequest,
   type RegisterRequest,
   type RegisterResponse,
+  type ResolvePaymentRequest,
   type UpdateProfileRequest,
   type UpdateProviderLocationRequest,
   type UpdateProviderProfileRequest,
@@ -331,6 +342,15 @@ export function createApiClient(options: ApiClientOptions) {
         request(`/bookings/${id}/cancel`, BookingSchema, { method: 'POST', body, accessToken }),
       contact: (accessToken: string, id: string): Promise<BookingContact> =>
         request(`/bookings/${id}/contact`, BookingContactSchema, withToken(accessToken)),
+      /** Starts (or resumes) the online advance: the amount comes from the booking, never from here. */
+      createCheckout: (accessToken: string, id: string): Promise<CheckoutSession> =>
+        request(`/bookings/${id}/payments/checkout`, CheckoutSessionSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      payments: (accessToken: string, id: string): Promise<PaymentList> =>
+        request(`/bookings/${id}/payments`, PaymentListSchema, withToken(accessToken)),
     },
 
     /** Provider inbox and transitions on bookings of the caller's vehicles. */
@@ -668,15 +688,39 @@ export function createApiClient(options: ApiClientOptions) {
         request('/admin/bookings', AdminBookingListSchema, { accessToken, query }),
       getBooking: (accessToken: string, id: string): Promise<AdminBooking> =>
         request(`/admin/bookings/${id}`, AdminBookingSchema, withToken(accessToken)),
-      /** Temporary Phase 6 bridge; the API refuses it in production. */
-      confirmBookingForTesting: (
+
+      /** Payments flagged for manual resolution. */
+      listPayments: (
+        accessToken: string,
+        query: { limit?: number } = {},
+      ): Promise<AdminPaymentList> =>
+        request('/admin/payments', AdminPaymentListSchema, { accessToken, query }),
+      getPayment: (accessToken: string, id: string): Promise<AdminPaymentListItem> =>
+        request(`/admin/payments/${id}`, AdminPaymentListItemSchema, withToken(accessToken)),
+      recordRefund: (
         accessToken: string,
         id: string,
-        body: ConfirmBookingForTestingRequest,
-      ): Promise<AdminBooking> =>
-        request(`/admin/bookings/${id}/confirm-for-testing`, AdminBookingSchema, {
+        body: RecordRefundRequest,
+      ): Promise<AdminPaymentListItem> =>
+        request(`/admin/payments/${id}/refund`, AdminPaymentListItemSchema, {
           method: 'POST',
           body,
+          accessToken,
+        }),
+      resolvePayment: (
+        accessToken: string,
+        id: string,
+        body: ResolvePaymentRequest,
+      ): Promise<AdminPaymentListItem> =>
+        request(`/admin/payments/${id}/resolve`, AdminPaymentListItemSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      reconcilePayment: (accessToken: string, id: string): Promise<PaymentReconciliation> =>
+        request(`/admin/payments/${id}/reconcile`, PaymentReconciliationSchema, {
+          method: 'POST',
+          body: {},
           accessToken,
         }),
     },

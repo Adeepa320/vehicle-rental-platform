@@ -98,6 +98,12 @@ export const bookings = pgTable(
     priceBreakdown: jsonb('price_breakdown').$type<unknown>().notNull(),
     /** Hash of the vehicle's pricing fields when quoted; lets a stale quote be detected. */
     pricingFingerprint: text('pricing_fingerprint').notNull(),
+    /** Money split snapshot (Phase 7, D8 model B): advance paid online, balance paid to the provider at pickup. */
+    advancePercentage: numeric('advance_percentage', { precision: 5, scale: 2 })
+      .notNull()
+      .default('10.00'),
+    advanceAmount: money('advance_amount').notNull().default('0.00'),
+    balanceDueAmount: money('balance_due_amount').notNull().default('0.00'),
 
     // ---- timers ----
     respondBy: timestamp('respond_by', tz).notNull(),
