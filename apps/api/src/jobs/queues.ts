@@ -7,10 +7,14 @@ export const QUEUES = {
   emailSend: 'email.send',
   /** Scheduled sweep that expires overdue booking requests / acceptances (Phase 6). Payload: `{}`. */
   bookingsExpire: 'bookings.expire',
+  /** Scheduled sweep that sends payment / pickup / review reminders (Phase 8). Payload: `{}`. */
+  remindersSweep: 'reminders.sweep',
 } as const;
 
 /** Cron (UTC) for the booking expiry sweep: every minute; the job itself is idempotent. */
 export const BOOKINGS_EXPIRE_CRON = '* * * * *';
+/** Cron (UTC) for the reminder sweep: every minute; every reminder is deduplicated at the database. */
+export const REMINDERS_SWEEP_CRON = '* * * * *';
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
@@ -41,6 +45,16 @@ export const QUEUE_DEFINITIONS: readonly QueueDefinition[] = [
   },
   {
     name: QUEUES.bookingsExpire,
+    options: {
+      retryLimit: 2,
+      retryDelay: 30,
+      retryBackoff: false,
+      expireInSeconds: 120,
+      retentionDays: 2,
+    },
+  },
+  {
+    name: QUEUES.remindersSweep,
     options: {
       retryLimit: 2,
       retryDelay: 30,

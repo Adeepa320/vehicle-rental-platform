@@ -16,6 +16,7 @@ import {
   type PaymentReconciliation,
   type RecordRefundRequest,
   type ResolvePaymentRequest,
+  formatLkr,
 } from '@vrp/contracts';
 import {
   bookings,
@@ -41,7 +42,9 @@ import {
   type BookingContext,
 } from '../bookings/booking.persistence';
 import { BookingsService } from '../bookings/bookings.service';
+import { formatColombo } from '../notifications/email/booking-templates';
 import { EmailService } from '../notifications/email/email.service';
+import { NotificationsService } from '../notifications/inapp/notifications.service';
 import {
   paymentAnomalyOperatorEmail,
   paymentFailedEmail,
@@ -84,6 +87,7 @@ export class PaymentsService {
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
     private readonly bookings: BookingsService,
     private readonly email: EmailService,
+    private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     config: ConfigService<Env, true>,
     private readonly logger: PinoLogger,
@@ -504,6 +508,15 @@ export class PaymentsService {
     await this.notifyOperator(tx, booking, payment, anomaly, n);
     const ctx = await loadBookingContext(tx, eq(bookings.id, booking.id));
     if (ctx && anomaly === 'late_success') {
+      await this.notifications.create(tx, {
+        userId: ctx.customer.id,
+        type: 'payment.late_success',
+        title: `Your payment for ${ctx.booking.reference} arrived after the booking closed`,
+        body: 'Our team will arrange a refund; you do not need to do anything.',
+        linkPath: `/bookings/${booking.id}`,
+        metadata: { bookingId: booking.id },
+        dedupeKey: `booking:${booking.id}:late-success:${payment.id}`,
+      });
       await this.email.enqueue(
         paymentLateSuccessEmail({
           ...bookingEmailBase(ctx, ctx.customer, `${this.webAppUrl}/bookings/${booking.id}`),
@@ -554,6 +567,15 @@ export class PaymentsService {
     await this.event(tx, payment, `payment.${status}`, n);
     const ctx = await loadBookingContext(tx, eq(bookings.id, booking.id));
     if (ctx && booking.status === 'accepted') {
+      await this.notifications.create(tx, {
+        userId: ctx.customer.id,
+        type: 'payment.failed',
+        title: `Payment ${status} for ${ctx.booking.reference}`,
+        body: `Nothing was charged. You can try again${booking.confirmBy ? ` until ${formatColombo(booking.confirmBy)}` : ''}.`,
+        linkPath: `/bookings/${booking.id}`,
+        metadata: { bookingId: booking.id },
+        dedupeKey: `booking:${booking.id}:payment-${status}:${payment.id}`,
+      });
       await this.email.enqueue(
         paymentFailedEmail({
           ...bookingEmailBase(ctx, ctx.customer, `${this.webAppUrl}/bookings/${booking.id}`),
@@ -730,6 +752,15 @@ export class PaymentsService {
       );
       const ctx = await loadBookingContext(tx, eq(bookings.id, locked.bookingId));
       if (ctx) {
+        await this.notifications.create(tx, {
+          userId: ctx.customer.id,
+          type: 'payment.refund_recorded',
+          title: `Refund of ${formatLkr(input.amount)} recorded for ${ctx.booking.reference}`,
+          body: `Reason: ${input.reason}`,
+          linkPath: `/bookings/${locked.bookingId}`,
+          metadata: { bookingId: locked.bookingId },
+          dedupeKey: `booking:${locked.bookingId}:refund:${id}:${now.getTime()}`,
+        });
         await this.email.enqueue(
           paymentRefundRecordedEmail({
             ...bookingEmailBase(

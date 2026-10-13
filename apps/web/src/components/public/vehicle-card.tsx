@@ -1,6 +1,7 @@
 import { formatLkr, type PublicVehicleCard } from '@vrp/contracts';
 import Link from 'next/link';
 
+import { RatingSummaryLine } from '@/components/reviews/rating-stars';
 import { Badge } from '@/components/ui/badge';
 import { vehicleHref, type SearchState } from '@/lib/search-params';
 import { FUEL_LABEL, TRANSMISSION_LABEL } from '@/lib/vehicle-labels';
@@ -58,6 +59,7 @@ export function VehicleCard({ card, state, reference, highlighted }: VehicleCard
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-medium">{card.provider.displayName}</span>
           <Badge variant="secondary">Platform-approved provider</Badge>
+          <RatingSummaryLine summary={card.rating} compact />
         </p>
         <div className="mt-auto flex flex-wrap items-end justify-between gap-2">
           <div className="text-sm">

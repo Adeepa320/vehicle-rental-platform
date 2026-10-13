@@ -11,6 +11,7 @@ import {
   bookingRequestExpiredEmail,
 } from '../notifications/email/booking-templates';
 import { EmailService } from '../notifications/email/email.service';
+import { NotificationsService } from '../notifications/inapp/notifications.service';
 import { cancelPendingPayments } from '../payments/payment.persistence';
 import {
   bookingEmailBase,
@@ -43,6 +44,7 @@ export class BookingExpiryService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly email: EmailService,
+    private readonly notifications: NotificationsService,
     config: ConfigService<Env, true>,
     private readonly logger: PinoLogger,
   ) {
@@ -93,6 +95,15 @@ export class BookingExpiryService {
       await this.markExpired(tx, id, current.version, 'expire_request', now);
       const ctx = await loadBookingContext(tx, eq(bookings.id, id));
       if (ctx) {
+        await this.notifications.create(tx, {
+          userId: ctx.customer.id,
+          type: 'booking.expired',
+          title: `Request ${ctx.booking.reference} expired`,
+          body: `${ctx.provider.displayName} did not answer in time. Search again for other vehicles.`,
+          linkPath: '/search',
+          metadata: { bookingId: id },
+          dedupeKey: `booking:${id}:expired:customer`,
+        });
         await this.email.enqueue(
           bookingRequestExpiredEmail({
             ...bookingEmailBase(ctx, ctx.customer, `${this.webAppUrl}/search`),
@@ -126,6 +137,24 @@ export class BookingExpiryService {
       });
       const ctx = await loadBookingContext(tx, eq(bookings.id, id));
       if (ctx) {
+        await this.notifications.create(tx, {
+          userId: ctx.customer.id,
+          type: 'booking.expired',
+          title: `Booking ${ctx.booking.reference} expired before payment`,
+          body: 'The advance was not paid in time, so the reservation was released.',
+          linkPath: `/bookings/${id}`,
+          metadata: { bookingId: id },
+          dedupeKey: `booking:${id}:expired:customer`,
+        });
+        await this.notifications.create(tx, {
+          userId: ctx.owner.id,
+          type: 'booking.expired',
+          title: `Booking ${ctx.booking.reference} expired before payment`,
+          body: 'The customer did not pay the advance in time; the dates are free again.',
+          linkPath: `/provider/bookings/${id}`,
+          metadata: { bookingId: id },
+          dedupeKey: `booking:${id}:expired:provider`,
+        });
         await this.email.enqueue(
           bookingAcceptanceExpiredEmail({
             ...bookingEmailBase(ctx, ctx.customer, `${this.webAppUrl}/bookings/${id}`),

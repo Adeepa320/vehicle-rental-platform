@@ -114,6 +114,7 @@ export const EVENT_LABEL: Record<string, string> = {
   'booking.completed': 'Return recorded',
   'booking.no_show': 'Marked as no-show',
   'booking.contact_revealed': 'Contact details viewed',
+  'booking.reviewed': 'Review left',
 };
 
 /** Wording for the advance payment state (customer and provider pages). */

@@ -2,10 +2,12 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   DistrictSchema,
+  ExchangeRatesResponseSchema,
   PlaceSummarySchema,
   PlacesQuerySchema,
   VehicleCategorySchema,
   type District,
+  type ExchangeRatesResponse,
   type PlaceSummary,
   type PlacesQuery,
   type VehicleCategory,
@@ -38,6 +40,15 @@ export class ReferenceController {
     @Query(new ZodValidationPipe(PlacesQuerySchema)) query: PlacesQuery,
   ): Promise<PlaceSummary[]> {
     return this.reference.listPlaces(query.districtId);
+  }
+
+  @Get('exchange-rates')
+  @ApiOperation({
+    summary: 'Indicative display rates (LKR base, operator-maintained; never used for pricing)',
+  })
+  @ApiZodResponse(200, ExchangeRatesResponseSchema)
+  exchangeRates(): Promise<ExchangeRatesResponse> {
+    return this.reference.exchangeRates();
   }
 
   @Get('vehicle-categories')

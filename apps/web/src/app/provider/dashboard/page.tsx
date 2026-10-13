@@ -1,6 +1,6 @@
 'use client';
 
-import type { ProviderProfile } from '@vrp/contracts';
+import type { ProviderMetrics, ProviderProfile } from '@vrp/contracts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { AuthCard, FormMessage } from '@/components/auth/form-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ProviderMetricsList } from '@/components/provider/provider-metrics-card';
 import { ProviderNav } from '@/components/provider/provider-nav';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRequireAuth } from '@/lib/auth/use-require-auth';
@@ -21,6 +22,7 @@ export default function ProviderDashboardPage() {
   const router = useRouter();
   const reference = useReferenceData();
   const [profile, setProfile] = useState<ProviderProfile | null | undefined>(undefined);
+  const [metrics, setMetrics] = useState<ProviderMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,6 +43,21 @@ export default function ProviderDashboardPage() {
       cancelled = true;
     };
   }, [api, gate, router, user, withAccessToken]);
+
+  useEffect(() => {
+    if (gate !== 'ready' || !user?.roles.includes('provider')) return;
+    let cancelled = false;
+    withAccessToken((token) => api.providers.metrics(token))
+      .then((result) => {
+        if (!cancelled) setMetrics(result);
+      })
+      .catch(() => {
+        // Metrics are informational; the dashboard still renders without them.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, gate, user, withAccessToken]);
 
   if (gate !== 'ready' || profile === undefined) {
     return (
@@ -105,9 +122,30 @@ export default function ProviderDashboardPage() {
           </Button>
         </div>
         <p className="text-muted-foreground mt-3 text-sm">
-          Listings are reviewed by our team before they go live. Photos and customer bookings come
-          in later releases.
+          Listings are reviewed by our team before they go live; customers then search, book and
+          review them.
         </p>
+      </AuthCard>
+
+      <AuthCard
+        title="Reviews and trust signals"
+        description="Computed from your booking history and published reviews; customers see the same figures on your listings."
+      >
+        {metrics ? (
+          <ProviderMetricsList metrics={metrics} />
+        ) : (
+          <p className="text-muted-foreground text-sm">Loading…</p>
+        )}
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/provider/reviews" />}
+          >
+            Reviews and replies
+          </Button>
+        </div>
       </AuthCard>
 
       <AuthCard title="Provider details">

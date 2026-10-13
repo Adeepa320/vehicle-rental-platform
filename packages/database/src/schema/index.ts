@@ -12,3 +12,5 @@ export * from './vehicles';
 export * from './vehicle-photos';
 export * from './bookings';
 export * from './payments';
+export * from './reviews';
+export * from './notifications';

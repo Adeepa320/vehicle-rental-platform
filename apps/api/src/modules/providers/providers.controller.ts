@@ -3,15 +3,18 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ProviderApplicationDraftSchema,
   ProviderApplicationSchema,
+  ProviderMetricsSchema,
   ProviderProfileSchema,
   SubmitProviderApplicationRequestSchema,
   UpdateProviderProfileRequestSchema,
   type ProviderApplication,
   type ProviderApplicationDraft,
+  type ProviderMetrics,
   type ProviderProfile,
   type SubmitProviderApplicationRequest,
   type UpdateProviderProfileRequest,
 } from '@vrp/contracts';
+import type { ProviderProfile as ProviderProfileRow } from '@vrp/database';
 import type { Request } from 'express';
 
 import { ApiException } from '../../common/errors/api.exception';
@@ -20,9 +23,11 @@ import { ApiZodBody, ApiZodResponse } from '../../openapi/zod-openapi';
 import { AuthThrottle } from '../auth/auth-throttle';
 import { requestMeta, type AuthenticatedUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { CurrentProvider } from './decorators/current-provider.decorator';
 import { ActiveProviderGuard } from './guards/active-provider.guard';
 import { ProviderApplicationsService } from './provider-applications.service';
 import { toApplicantApplication, toProviderProfile } from './provider.mappers';
+import { ProviderMetricsService } from './provider-metrics.service';
 import { ProvidersService } from './providers.service';
 
 /** The caller's own application and (once approved) provider profile. */
@@ -33,6 +38,7 @@ export class ProvidersController {
   constructor(
     private readonly applications: ProviderApplicationsService,
     private readonly providers: ProvidersService,
+    private readonly metrics: ProviderMetricsService,
   ) {}
 
   // ---------------------------------------------------------- application
@@ -81,6 +87,17 @@ export class ProvidersController {
     const result = await this.providers.getMine(user.id);
     if (!result) throw new ApiException('NOT_FOUND', 'You are not an approved provider yet', 404);
     return toProviderProfile(result.profile, result.relations);
+  }
+
+  @Get('metrics')
+  @UseGuards(ActiveProviderGuard)
+  @ApiOperation({
+    summary:
+      'My trust metrics: completed bookings, acceptance rate, response time, rating (Phase 8)',
+  })
+  @ApiZodResponse(200, ProviderMetricsSchema)
+  async myMetrics(@CurrentProvider() provider: ProviderProfileRow): Promise<ProviderMetrics> {
+    return this.metrics.metricsFor(provider.id);
   }
 
   @Patch()

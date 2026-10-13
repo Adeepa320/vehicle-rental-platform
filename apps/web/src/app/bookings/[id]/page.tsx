@@ -17,6 +17,8 @@ import {
   TimelineCard,
 } from '@/components/bookings/booking-parts';
 import { PayAdvanceButton, PaymentStateLine } from '@/components/bookings/payment-parts';
+import { LicensingGuidance } from '@/components/guidance/licensing-guidance';
+import { ReviewCta } from '@/components/reviews/review-cta';
 import { Photo } from '@/components/public/photo';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -167,6 +169,12 @@ export default function CustomerBookingPage() {
         </AuthCard>
         <DriverCard booking={booking} />
         <HandoverCard booking={booking} />
+        <ReviewCta booking={booking} />
+        {booking.status === 'accepted' || booking.status === 'confirmed' ? (
+          <div className="lg:col-span-2">
+            <LicensingGuidance categoryId={booking.vehicle.categoryId} variant="compact" />
+          </div>
+        ) : null}
         {booking.customerNote ? (
           <AuthCard title="Your message">
             <p className="text-sm whitespace-pre-wrap">{booking.customerNote}</p>

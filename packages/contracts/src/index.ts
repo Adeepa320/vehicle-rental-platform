@@ -13,3 +13,8 @@ export * from './vehicles/photo';
 export * from './discovery/public';
 export * from './payments/payment';
 export * from './bookings/booking';
+export * from './reviews/review';
+export * from './providers/metrics';
+export * from './notifications/notification';
+export * from './guidance/licensing';
+export * from './common/currency';

@@ -6,6 +6,8 @@ import { BookingExpiryService } from './modules/bookings/booking-expiry.service'
 import { registerBookingJobs } from './modules/bookings/booking-expiry.worker';
 import { EmailService } from './modules/notifications/email/email.service';
 import { registerEmailJobs } from './modules/notifications/email/email.worker';
+import { RemindersService } from './modules/notifications/reminders/reminders.service';
+import { registerReminderJobs } from './modules/notifications/reminders/reminders.worker';
 import { WorkerModule } from './worker.module';
 
 /**
@@ -26,6 +28,7 @@ async function bootstrap(): Promise<void> {
   await jobs.start('worker');
   await registerEmailJobs(jobs, app.get(EmailService));
   await registerBookingJobs(jobs, app.get(BookingExpiryService));
+  await registerReminderJobs(jobs, app.get(RemindersService));
   logger.log(`Worker ready; registered job handlers: ${jobs.registeredJobNames.join(', ')}`);
 }
 

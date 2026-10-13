@@ -43,6 +43,11 @@ export const ApiErrorCodeSchema = z.enum([
   'PAYMENT_WINDOW_EXPIRED',
   'ALREADY_PAID',
   'PAYMENT_GATEWAY_UNAVAILABLE',
+  // Phase 8 — reviews
+  'REVIEW_WINDOW_CLOSED',
+  'ALREADY_REVIEWED',
+  'ALREADY_REPLIED',
+  'REVIEW_LOCKED_AFTER_REPLY',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

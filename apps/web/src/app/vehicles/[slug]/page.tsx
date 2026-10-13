@@ -7,6 +7,10 @@ import { Suspense } from 'react';
 import { AvailabilityPanel } from '@/components/public/availability-panel';
 import { DetailMap } from '@/components/public/detail-map';
 import { Gallery } from '@/components/public/gallery';
+import { LicensingGuidance } from '@/components/guidance/licensing-guidance';
+import { ProviderMetricsList } from '@/components/provider/provider-metrics-card';
+import { RatingSummaryLine } from '@/components/reviews/rating-stars';
+import { VehicleReviews } from '@/components/reviews/vehicle-reviews';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ApiClientError, createApiClient } from '@/lib/api-client';
@@ -113,6 +117,9 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
           {vehicle.make} {vehicle.model} {vehicle.modelYear} · {vehicle.place.name},{' '}
           {vehicle.place.districtName}
         </p>
+        <p>
+          <RatingSummaryLine summary={vehicle.rating} />
+        </p>
       </header>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -165,6 +172,14 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
               )}
             </CardContent>
           </Card>
+
+          <LicensingGuidance categoryId={vehicle.categoryId} />
+
+          <VehicleReviews
+            slug={vehicle.slug}
+            providerName={vehicle.provider.displayName}
+            initialSummary={vehicle.rating}
+          />
         </div>
 
         <aside className="grid gap-4 self-start">
@@ -191,6 +206,9 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
                 {vehicle.provider.vehicleCount} listing
                 {vehicle.provider.vehicleCount === 1 ? '' : 's'} on the platform
               </p>
+              <div className="text-foreground mt-2">
+                <ProviderMetricsList metrics={vehicle.provider.metrics} compact />
+              </div>
               {vehicle.provider.description ? (
                 <p className="text-foreground mt-2 whitespace-pre-wrap">
                   {vehicle.provider.description}

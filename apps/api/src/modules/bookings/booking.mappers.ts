@@ -73,6 +73,7 @@ export const VISIBLE_EVENT_METADATA: Readonly<Record<string, readonly string[]>>
   'booking.no_show': ['holdReleased'],
   'booking.cancelled': ['by', 'holdReleased', 'refundDueAmount'],
   'booking.expired': ['stage', 'holdReleased', 'pendingPaymentsCancelled'],
+  'booking.reviewed': ['overallRating'],
 };
 
 /** Allow-list projection of a stored event's metadata for the given viewer. */

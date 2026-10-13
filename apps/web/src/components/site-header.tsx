@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
 
@@ -56,6 +57,7 @@ export function SiteHeader() {
             <span className="text-muted-foreground">…</span>
           ) : status === 'authenticated' && user ? (
             <>
+              <NotificationBell />
               <Button variant="ghost" nativeButton={false} render={<Link href="/bookings" />}>
                 My bookings
               </Button>

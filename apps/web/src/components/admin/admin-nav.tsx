@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/admin/vehicles', label: 'Vehicles' },
   { href: '/admin/bookings', label: 'Bookings' },
   { href: '/admin/payments', label: 'Payments' },
+  { href: '/admin/reviews', label: 'Reviews' },
 ];
 
 /** Sub-navigation for the admin area. */

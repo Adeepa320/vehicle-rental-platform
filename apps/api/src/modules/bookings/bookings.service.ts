@@ -30,6 +30,7 @@ import {
   type QuoteUnavailableReason,
   OPEN_BOOKING_STATUSES,
   TERMINAL_BOOKING_STATUSES,
+  type NotificationType,
 } from '@vrp/contracts';
 import {
   bookingDrivers,
@@ -80,9 +81,11 @@ import {
   bookingPickedUpEmail,
   bookingRequestReceivedEmail,
   bookingRequestedProviderEmail,
+  formatColombo,
 } from '../notifications/email/booking-templates';
 import { APP_NAME } from '../notifications/email/templates';
 import { EmailService } from '../notifications/email/email.service';
+import { NotificationsService } from '../notifications/inapp/notifications.service';
 import { BookingExpiryService } from './booking-expiry.service';
 import { BookingQuoteService } from './booking-quote.service';
 import { BookingSettingsService } from './booking-settings.service';
@@ -104,6 +107,7 @@ import {
   recordBookingEvent,
   releaseBookingHold,
   type BookingContext,
+  vehicleTitleOf,
 } from './booking.persistence';
 import { generateBookingReference } from './booking-reference';
 import {
@@ -154,6 +158,7 @@ export class BookingsService {
     private readonly photos: VehiclePhotosService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly notifications: NotificationsService,
     config: ConfigService<Env, true>,
     private readonly logger: PinoLogger,
   ) {
@@ -373,6 +378,24 @@ export class BookingsService {
 
       // 6. Notify both parties in the same transaction.
       const ctx = await this.contextOrThrow(tx, created.id);
+      await this.notify(tx, {
+        userId: ctx.owner.id,
+        type: 'booking.requested',
+        title: `New booking request ${ctx.booking.reference}`,
+        body: `${firstName(ctx.customer.fullName)} requested ${vehicleTitleOf(ctx.vehicle)} for ${days} day${days === 1 ? '' : 's'}. Respond by ${formatColombo(respondBy)}.`,
+        linkPath: `/provider/bookings/${created.id}`,
+        bookingId: created.id,
+        key: 'requested:provider',
+      });
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.requested',
+        title: `Request ${ctx.booking.reference} sent to ${ctx.provider.displayName}`,
+        body: `The provider has until ${formatColombo(respondBy)} to answer. Nothing is reserved yet.`,
+        linkPath: `/bookings/${created.id}`,
+        bookingId: created.id,
+        key: 'requested:customer',
+      });
       await this.email.enqueue(
         bookingRequestedProviderEmail({
           ...bookingEmailBase(ctx, ctx.owner, this.providerLink(ctx.booking.id)),
@@ -642,6 +665,15 @@ export class BookingsService {
           },
         });
         const otherCtx = await this.contextOrThrow(tx, other.id);
+        await this.notify(tx, {
+          userId: otherCtx.customer.id,
+          type: 'booking.declined',
+          title: `Request ${otherCtx.booking.reference} was not accepted`,
+          body: `${otherCtx.provider.displayName} accepted another request for ${vehicleTitleOf(otherCtx.vehicle)} on these dates.`,
+          linkPath: `/bookings/${other.id}`,
+          bookingId: other.id,
+          key: 'declined',
+        });
         await this.email.enqueue(
           bookingDeclinedEmail({
             ...bookingEmailBase(otherCtx, otherCtx.customer, this.customerLink(other.id)),
@@ -655,6 +687,15 @@ export class BookingsService {
       }
 
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.accepted',
+        title: `${ctx.provider.displayName} accepted ${ctx.booking.reference}`,
+        body: `Pay the advance of ${formatLkr(ctx.booking.advanceAmount)} by ${formatColombo(confirmBy)} to confirm the booking.`,
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'accepted',
+      });
       await this.email.enqueue(
         bookingAcceptedEmail({
           ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
@@ -698,6 +739,15 @@ export class BookingsService {
         metadata: { reason: input.reason, automatic: false },
       });
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.declined',
+        title: `Request ${ctx.booking.reference} was declined`,
+        body: `${ctx.provider.displayName} declined: ${DECLINE_REASON_LABEL[input.reason]}.`,
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'declined',
+      });
       await this.email.enqueue(
         bookingDeclinedEmail({
           ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
@@ -750,6 +800,15 @@ export class BookingsService {
         },
       });
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.cancelled',
+        title: `Booking ${ctx.booking.reference} was cancelled by the provider`,
+        body: refundNoteFor(settlement) ?? 'The reservation has been released.',
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'cancelled',
+      });
       await this.email.enqueue(
         bookingCancelledEmail({
           ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
@@ -791,6 +850,15 @@ export class BookingsService {
         metadata: { odometerKm: input.odometerKm ?? null, fuelLevel: input.fuelLevel ?? null },
       });
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.picked_up',
+        title: `Pickup recorded for ${ctx.booking.reference}`,
+        body: `${ctx.provider.displayName} recorded the handover of ${vehicleTitleOf(ctx.vehicle)}. Have a good trip.`,
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'picked_up',
+      });
       await this.email.enqueue(
         bookingPickedUpEmail({
           ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
@@ -816,6 +884,7 @@ export class BookingsService {
     meta: RequestMeta,
     now = new Date(),
   ): Promise<BookingView> {
+    const settings = await this.settings.get();
     await this.db.transaction(async (tx) => {
       const current = await this.lockOwn(tx, id, { providerId: provider.id });
       this.assertVersion(current, input.version);
@@ -835,11 +904,31 @@ export class BookingsService {
         metadata: { odometerKm: input.odometerKm ?? null, fuelLevel: input.fuelLevel ?? null },
       });
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.completed',
+        title: `Rental ${ctx.booking.reference} completed`,
+        body: `${ctx.provider.displayName} recorded the return of ${vehicleTitleOf(ctx.vehicle)}. Thank you for renting with us.`,
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'completed',
+      });
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'review.request',
+        title: `How was ${vehicleTitleOf(ctx.vehicle)}?`,
+        body: `Leave a short review of booking ${ctx.booking.reference} within ${settings.reviewWindowDays} days to help other travellers.`,
+        linkPath: `/bookings/${id}/review`,
+        bookingId: id,
+        key: 'review-request',
+      });
       await this.email.enqueue(
         bookingCompletedEmail({
           ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
           providerName: ctx.provider.displayName,
           completedAt: now,
+          reviewLink: `${this.webAppUrl}/bookings/${id}/review`,
+          reviewWindowDays: settings.reviewWindowDays,
           record: {
             odometerKm: input.odometerKm ?? null,
             fuelLevel: input.fuelLevel ?? null,
@@ -888,6 +977,15 @@ export class BookingsService {
         metadata: { holdReleased: released !== undefined },
       });
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.no_show',
+        title: `Booking ${ctx.booking.reference} marked as no-show`,
+        body: `${ctx.provider.displayName} could not reach you at pickup; the reservation has been released.`,
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'no_show',
+      });
       await this.email.enqueue(
         bookingNoShowEmail({
           ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
@@ -939,6 +1037,15 @@ export class BookingsService {
         },
       });
       const ctx = await this.contextOrThrow(tx, id);
+      await this.notify(tx, {
+        userId: ctx.owner.id,
+        type: 'booking.cancelled',
+        title: `Booking ${ctx.booking.reference} was cancelled by the customer`,
+        body: `${firstName(ctx.customer.fullName)} cancelled ${vehicleTitleOf(ctx.vehicle)}; the dates are free again.`,
+        linkPath: `/provider/bookings/${id}`,
+        bookingId: id,
+        key: 'cancelled:provider',
+      });
       await this.email.enqueue(
         bookingCancelledEmail({
           ...bookingEmailBase(ctx, ctx.owner, this.providerLink(id)),
@@ -1034,6 +1141,24 @@ export class BookingsService {
       tx,
     );
     const ctx = await this.contextOrThrow(tx, bookingId);
+    await this.notify(tx, {
+      userId: ctx.customer.id,
+      type: 'booking.confirmed',
+      title: `Booking ${ctx.booking.reference} is confirmed`,
+      body: "Advance received. The pickup address and the provider's contact details are on your booking page.",
+      linkPath: `/bookings/${bookingId}`,
+      bookingId,
+      key: 'confirmed:customer',
+    });
+    await this.notify(tx, {
+      userId: ctx.owner.id,
+      type: 'booking.confirmed',
+      title: `Booking ${ctx.booking.reference} is confirmed`,
+      body: `${ctx.customer.fullName} paid the advance for ${vehicleTitleOf(ctx.vehicle)}. Contact details are now shared.`,
+      linkPath: `/provider/bookings/${bookingId}`,
+      bookingId,
+      key: 'confirmed:provider',
+    });
     await this.email.enqueue(
       bookingConfirmedCustomerEmail({
         ...bookingEmailBase(ctx, ctx.customer, this.customerLink(bookingId)),
@@ -1322,6 +1447,30 @@ export class BookingsService {
         }),
       )
       .digest('hex');
+  }
+
+  /** In-app notification in the transaction of the change; `key` is unique per booking event and recipient. */
+  private notify(
+    tx: DatabaseExecutor,
+    input: {
+      userId: string;
+      type: NotificationType;
+      title: string;
+      body: string;
+      linkPath: string;
+      bookingId: string;
+      key: string;
+    },
+  ): Promise<unknown> {
+    return this.notifications.create(tx, {
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      linkPath: input.linkPath,
+      metadata: { bookingId: input.bookingId },
+      dedupeKey: `booking:${input.bookingId}:${input.key}`,
+    });
   }
 
   private customerLink(id: string): string {

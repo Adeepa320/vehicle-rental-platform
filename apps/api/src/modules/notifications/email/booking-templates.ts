@@ -49,7 +49,7 @@ function summaryHtml(b: BookingEmailBase): string {
 <tr><td style="padding:2px 12px 2px 0;color:#666">Return</td><td>${escapeHtml(formatColombo(b.endsAt))}</td></tr>
 <tr><td style="padding:2px 12px 2px 0;color:#666">Price</td><td>${b.rentalDays} day${b.rentalDays === 1 ? '' : 's'} · ${escapeHtml(formatLkr(b.subtotal))} rental</td></tr>
 </table>
-<p style="font-size:13px;color:#444">The refundable deposit, fuel, delivery and extra kilometres are settled with the provider in person. Nothing is paid online in this release.</p>`;
+<p style="font-size:13px;color:#444">The advance is paid online after acceptance; the refundable deposit, the rental balance, fuel, delivery and extra kilometres are settled with the provider in person.</p>`;
 }
 
 // ------------------------------------------------------------------ request
@@ -372,14 +372,28 @@ ${button(input.link, 'View booking')}`,
 }
 
 export function bookingCompletedEmail(
-  input: BookingEmailBase & { providerName: string; record: HandoverRecord; completedAt: Date },
+  input: BookingEmailBase & {
+    providerName: string;
+    record: HandoverRecord;
+    completedAt: Date;
+    /** Link to the review form (Phase 8); the review window is stated in the text. */
+    reviewLink?: string;
+    reviewWindowDays?: number;
+  },
 ): EmailMessage {
   const subject = `Booking ${input.reference} completed`;
+  const reviewLines = input.reviewLink
+    ? [
+        '',
+        `How was it? Leave a short review within ${input.reviewWindowDays ?? 14} days to help other travellers: ${input.reviewLink}`,
+      ]
+    : [];
   const text = [
     `Hi ${input.fullName},`,
     '',
     `${input.providerName} recorded the return of ${input.vehicleTitle} at ${formatColombo(input.completedAt)} (Sri Lanka time). Thank you for renting with ${APP_NAME}.`,
     ...recordLines(input.record),
+    ...reviewLines,
     input.link,
   ].join('\n');
   const html = layout(
@@ -389,6 +403,7 @@ export function bookingCompletedEmail(
 <ul>${recordLines(input.record)
       .map((line) => `<li>${escapeHtml(line)}</li>`)
       .join('')}</ul>
+${input.reviewLink ? `<p>How was it? Leave a short review within ${input.reviewWindowDays ?? 14} days to help other travellers.</p>${button(input.reviewLink, 'Leave a review')}` : ''}
 ${button(input.link, 'View booking')}`,
   );
   return { to: input.to, subject, text, html };

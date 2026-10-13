@@ -16,6 +16,14 @@ export interface BookingSettings {
   advancePercentage: number;
   /** Customer cancellations at least this many hours before pickup get the advance back in full. */
   cancellationFullRefundHours: number;
+  /** Days after completion during which a customer may leave (and edit) a review (Phase 8). */
+  reviewWindowDays: number;
+  /** One payment reminder this many hours before `confirm_by` (Phase 8). */
+  paymentReminderHoursBefore: number;
+  /** One pickup reminder this many hours before `starts_at` (Phase 8). */
+  pickupReminderHoursBefore: number;
+  /** One review reminder this many days after completion when no review exists (Phase 8). */
+  reviewReminderDaysAfter: number;
 }
 
 export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
@@ -25,6 +33,10 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   contactRevealStage: 'confirmed',
   advancePercentage: 10,
   cancellationFullRefundHours: 48,
+  reviewWindowDays: 14,
+  paymentReminderHoursBefore: 6,
+  pickupReminderHoursBefore: 24,
+  reviewReminderDaysAfter: 3,
 };
 
 const KEYS = [
@@ -34,6 +46,10 @@ const KEYS = [
   'contact_reveal_stage',
   'advance_percentage',
   'cancellation_full_refund_hours',
+  'review_window_days',
+  'payment_reminder_hours_before',
+  'pickup_reminder_hours_before',
+  'review_reminder_days_after',
 ] as const;
 const Percent = z.number().min(1).max(100);
 
@@ -42,6 +58,7 @@ const Hours = z
   .min(0.25)
   .max(24 * 30);
 const Grace = z.number().min(0).max(72);
+const Days = z.number().min(1).max(90);
 const Stage = z.enum(['accepted', 'confirmed']);
 
 const CACHE_MS = 60_000;
@@ -84,6 +101,22 @@ export class BookingSettingsService {
         Hours,
         byKey.get('cancellation_full_refund_hours'),
         d.cancellationFullRefundHours,
+      ),
+      reviewWindowDays: pick(Days, byKey.get('review_window_days'), d.reviewWindowDays),
+      paymentReminderHoursBefore: pick(
+        Hours,
+        byKey.get('payment_reminder_hours_before'),
+        d.paymentReminderHoursBefore,
+      ),
+      pickupReminderHoursBefore: pick(
+        Hours,
+        byKey.get('pickup_reminder_hours_before'),
+        d.pickupReminderHoursBefore,
+      ),
+      reviewReminderDaysAfter: pick(
+        Days,
+        byKey.get('review_reminder_days_after'),
+        d.reviewReminderDaysAfter,
       ),
     };
     this.cached = { value, at: Date.now() };

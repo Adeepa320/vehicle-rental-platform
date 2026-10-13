@@ -75,6 +75,30 @@ export const PLATFORM_SETTINGS: NewPlatformSetting[] = [
       'Whether a vehicle must pass admin document review before it can be active. DEFAULT — pending product decision.',
   },
   {
+    key: 'payment_reminder_hours_before',
+    value: 6,
+    description:
+      'Hours before the payment deadline (confirm_by) at which the customer gets one payment reminder (Phase 8).',
+  },
+  {
+    key: 'pickup_reminder_hours_before',
+    value: 24,
+    description:
+      'Hours before pickup at which both parties of a confirmed booking get one pickup reminder (Phase 8).',
+  },
+  {
+    key: 'review_reminder_days_after',
+    value: 3,
+    description:
+      'Days after completion at which a customer who has not reviewed yet gets one reminder, if the review window is still open (Phase 8).',
+  },
+  {
+    key: 'indicative_exchange_rates',
+    value: { asOf: null, source: null, rates: {} },
+    description:
+      'Operator-maintained indicative LKR → foreign rates for display only: { asOf, source, rates: { USD, EUR, GBP, AUD } } as units of foreign currency per 1 LKR. Empty rates = show LKR only. Never used for pricing or payment (Phase 8).',
+  },
+  {
     key: 'auto_pause_on_document_expiry',
     value: true,
     description: 'Automatically pause a vehicle when its revenue licence or insurance expires.',

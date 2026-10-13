@@ -9,6 +9,7 @@ import { FormMessage } from '@/components/auth/form-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { IndicativeAmount } from '@/components/public/indicative-amount';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/auth/auth-context';
 import { requestBookingHref } from '@/lib/booking-form';
@@ -104,6 +105,7 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
           {formatLkr(pricing.dailyRate)}{' '}
           <span className="text-muted-foreground text-base font-normal">/ day</span>
         </p>
+        <IndicativeAmount amountLkr={pricing.dailyRate} suffix=" / day" />
         <p className="text-muted-foreground text-xs">
           Deposit {formatLkr(pricing.securityDeposit)} (refundable) ·{' '}
           {pricing.includedKmPerDay === null

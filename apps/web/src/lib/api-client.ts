@@ -3,6 +3,19 @@ import {
   AdminBookingSchema,
   AdminPaymentListItemSchema,
   AdminPaymentListSchema,
+  AdminReviewListSchema,
+  AdminReviewSchema,
+  BookingReviewStateSchema,
+  CustomerReviewSchema,
+  ExchangeRatesResponseSchema,
+  MarkAllReadResponseSchema,
+  NotificationListSchema,
+  NotificationSchema,
+  ProviderMetricsSchema,
+  ProviderReviewListSchema,
+  ProviderReviewSchema,
+  PublicReviewListSchema,
+  UnreadCountSchema,
   AdminProviderApplicationListSchema,
   AdminProviderApplicationSchema,
   AdminProviderDetailSchema,
@@ -46,6 +59,23 @@ import {
   type AdminBookingList,
   type AdminPaymentList,
   type AdminPaymentListItem,
+  type AdminReview,
+  type AdminReviewList,
+  type BookingReviewState,
+  type CreateReviewRequest,
+  type CustomerReview,
+  type ExchangeRatesResponse,
+  type HideReviewRequest,
+  type MarkAllReadResponse,
+  type Notification,
+  type NotificationList,
+  type ProviderMetrics,
+  type ProviderReview,
+  type ProviderReviewList,
+  type PublicReviewList,
+  type ReplyReviewRequest,
+  type UnhideReviewRequest,
+  type UnreadCount,
   type AdminProviderApplication,
   type AdminProviderApplicationList,
   type AdminProviderDetail,
@@ -291,6 +321,9 @@ export function createApiClient(options: ApiClientOptions) {
         request('/reference/places', z.array(PlaceSummarySchema), { query: { districtId } }),
       vehicleCategories: (): Promise<VehicleCategory[]> =>
         request('/reference/vehicle-categories', z.array(VehicleCategorySchema)),
+      /** Indicative LKR → foreign display rates (operator-maintained; never used for pricing). */
+      exchangeRates: (): Promise<ExchangeRatesResponse> =>
+        request('/reference/exchange-rates', ExchangeRatesResponseSchema),
     },
 
     /** Customer-facing, unauthenticated discovery. */
@@ -310,6 +343,14 @@ export function createApiClient(options: ApiClientOptions) {
       quote: (slug: string, startsAt: string, endsAt: string): Promise<BookingQuote> =>
         request(`/vehicles/${encodeURIComponent(slug)}/quote`, BookingQuoteSchema, {
           query: { startsAt, endsAt },
+        }),
+      /** Published reviews of a listed vehicle, newest first. */
+      vehicleReviews: (
+        slug: string,
+        query: { cursor?: string; limit?: number } = {},
+      ): Promise<PublicReviewList> =>
+        request(`/vehicles/${encodeURIComponent(slug)}/reviews`, PublicReviewListSchema, {
+          query,
         }),
     },
 
@@ -351,6 +392,59 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       payments: (accessToken: string, id: string): Promise<PaymentList> =>
         request(`/bookings/${id}/payments`, PaymentListSchema, withToken(accessToken)),
+      /** Review eligibility and my existing review for a completed booking. */
+      reviewState: (accessToken: string, id: string): Promise<BookingReviewState> =>
+        request(`/bookings/${id}/review`, BookingReviewStateSchema, withToken(accessToken)),
+      createReview: (
+        accessToken: string,
+        id: string,
+        body: CreateReviewRequest,
+      ): Promise<CustomerReview> =>
+        request(`/bookings/${id}/review`, CustomerReviewSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      updateReview: (
+        accessToken: string,
+        id: string,
+        body: CreateReviewRequest,
+      ): Promise<CustomerReview> =>
+        request(`/bookings/${id}/review`, CustomerReviewSchema, {
+          method: 'PUT',
+          body,
+          accessToken,
+        }),
+    },
+
+    /** The caller's in-app notification feed. */
+    notifications: {
+      list: (
+        accessToken: string,
+        query: { cursor?: string; limit?: number; unreadOnly?: boolean } = {},
+      ): Promise<NotificationList> =>
+        request('/notifications', NotificationListSchema, {
+          accessToken,
+          query: {
+            cursor: query.cursor,
+            limit: query.limit,
+            unreadOnly: query.unreadOnly === undefined ? undefined : String(query.unreadOnly),
+          },
+        }),
+      unreadCount: (accessToken: string): Promise<UnreadCount> =>
+        request('/notifications/unread-count', UnreadCountSchema, withToken(accessToken)),
+      markRead: (accessToken: string, id: string): Promise<Notification> =>
+        request(`/notifications/${id}/read`, NotificationSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      markAllRead: (accessToken: string): Promise<MarkAllReadResponse> =>
+        request('/notifications/read-all', MarkAllReadResponseSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
     },
 
     /** Provider inbox and transitions on bookings of the caller's vehicles. */
@@ -435,6 +529,24 @@ export function createApiClient(options: ApiClientOptions) {
         body: UpdateProviderProfileRequest,
       ): Promise<ProviderProfile> =>
         request('/providers/me', ProviderProfileSchema, { method: 'PATCH', body, accessToken }),
+      /** Trust metrics from booking history (safe aggregates only). */
+      metrics: (accessToken: string): Promise<ProviderMetrics> =>
+        request('/providers/me/metrics', ProviderMetricsSchema, withToken(accessToken)),
+    },
+
+    /** Reviews of the caller's own vehicles and the one-time reply. */
+    providerReviews: {
+      list: (
+        accessToken: string,
+        query: { cursor?: string; limit?: number } = {},
+      ): Promise<ProviderReviewList> =>
+        request('/providers/me/reviews', ProviderReviewListSchema, { accessToken, query }),
+      reply: (accessToken: string, id: string, body: ReplyReviewRequest): Promise<ProviderReview> =>
+        request(`/providers/me/reviews/${id}/reply`, ProviderReviewSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
     },
 
     locations: {
@@ -721,6 +833,35 @@ export function createApiClient(options: ApiClientOptions) {
         request(`/admin/payments/${id}/reconcile`, PaymentReconciliationSchema, {
           method: 'POST',
           body: {},
+          accessToken,
+        }),
+
+      /** Review moderation. */
+      listReviews: (
+        accessToken: string,
+        query: { status?: 'published' | 'hidden'; cursor?: string; limit?: number } = {},
+      ): Promise<AdminReviewList> =>
+        request('/admin/reviews', AdminReviewListSchema, { accessToken, query }),
+      getReview: (accessToken: string, id: string): Promise<AdminReview> =>
+        request(`/admin/reviews/${id}`, AdminReviewSchema, withToken(accessToken)),
+      hideReview: (
+        accessToken: string,
+        id: string,
+        body: HideReviewRequest,
+      ): Promise<AdminReview> =>
+        request(`/admin/reviews/${id}/hide`, AdminReviewSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      unhideReview: (
+        accessToken: string,
+        id: string,
+        body: UnhideReviewRequest,
+      ): Promise<AdminReview> =>
+        request(`/admin/reviews/${id}/unhide`, AdminReviewSchema, {
+          method: 'POST',
+          body,
           accessToken,
         }),
     },

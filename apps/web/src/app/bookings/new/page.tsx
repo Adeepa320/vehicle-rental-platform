@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { AuthCard, FormField, FormMessage } from '@/components/auth/form-primitives';
+import { LicensingGuidance } from '@/components/guidance/licensing-guidance';
 import { Photo, photoSrc } from '@/components/public/photo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -222,6 +223,11 @@ function NewBookingForm() {
         title="Driver details"
         description="Who will drive. The provider checks the physical licence at pickup; we do not store licence numbers or documents."
       >
+        {vehicle ? (
+          <div className="mb-4">
+            <LicensingGuidance categoryId={vehicle.categoryId} variant="compact" />
+          </div>
+        ) : null}
         <form className="grid gap-4" onSubmit={(e) => void submit(e)} noValidate>
           {message ? <FormMessage variant="destructive">{message}</FormMessage> : null}
           <FormField id="fullName" label="Driver’s full name" error={errors.fullName || undefined}>

@@ -13,6 +13,7 @@ import { useState } from 'react';
 
 import { AuthCard } from '@/components/auth/form-primitives';
 import { Photo } from '@/components/public/photo';
+import { IndicativeAmount } from '@/components/public/indicative-amount';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -78,13 +79,19 @@ export function PriceCard({ booking }: { booking: Booking }) {
         ))}
         <div className="contents">
           <dt className="text-muted-foreground">Rental total</dt>
-          <dd className="font-semibold">{formatLkr(p.subtotal)}</dd>
+          <dd className="font-semibold">
+            {formatLkr(p.subtotal)}
+            <IndicativeAmount amountLkr={p.subtotal} inline />
+          </dd>
         </div>
         <div className="contents">
           <dt className="text-muted-foreground">
             Advance paid online ({Number(p.advancePercentage)}% of the rental)
           </dt>
-          <dd className="font-medium">{formatLkr(p.advance)}</dd>
+          <dd className="font-medium">
+            {formatLkr(p.advance)}
+            <IndicativeAmount amountLkr={p.advance} inline />
+          </dd>
         </div>
         <div className="contents">
           <dt className="text-muted-foreground">Balance paid to the provider at pickup</dt>
@@ -238,24 +245,30 @@ export function ContactReveal({
           </a>
         </p>
         {contact.phone ? (
-          <p>
-            <a className="underline underline-offset-4" href={`tel:${contact.phone}`}>
-              {contact.phone}
-            </a>
+          <div className="grid gap-2">
+            <p>
+              <a className="underline underline-offset-4" href={`tel:${contact.phone}`}>
+                {contact.phone}
+              </a>
+            </p>
             {contact.whatsappUrl ? (
-              <>
-                {' · '}
-                <a
-                  className="underline underline-offset-4"
-                  href={contact.whatsappUrl}
-                  target="_blank"
-                  rel="noreferrer"
+              <div>
+                <Button
+                  size="sm"
+                  nativeButton={false}
+                  render={<a href={contact.whatsappUrl} target="_blank" rel="noreferrer" />}
                 >
-                  WhatsApp
-                </a>
-              </>
-            ) : null}
-          </p>
+                  Open WhatsApp chat
+                </Button>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Opens WhatsApp with a message that mentions only the booking reference. WhatsApp
+                  is run by Meta; no messages pass through this platform.
+                </p>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-xs">No WhatsApp number on file.</p>
+            )}
+          </div>
         ) : (
           <p className="text-muted-foreground">No phone number on file.</p>
         )}

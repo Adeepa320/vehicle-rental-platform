@@ -113,6 +113,20 @@
       "when": 1791285242366,
       "tag": "0015_payments_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791883323409,
+      "tag": "0016_reviews_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791883324312,
+      "tag": "0017_reviews_triggers",
+      "breakpoints": true
     }
   ]
 }

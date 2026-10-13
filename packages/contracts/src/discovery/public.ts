@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { ProviderMetricsSchema } from '../providers/metrics';
+import { RatingSummarySchema } from '../reviews/review';
+
 import {
   LkrAmountSchema,
   SettlementCurrencySchema,
@@ -172,6 +175,10 @@ export const PublicProviderSummarySchema = PublicProviderBadgeSchema.extend({
   districtId: z.string(),
   /** Listings currently discoverable. */
   vehicleCount: z.number().int().min(0),
+  /** Published reviews across all of the provider's vehicles (Phase 8). */
+  rating: RatingSummarySchema,
+  /** Safe aggregates from booking history (Phase 8, TECH_DECISIONS D59). */
+  metrics: ProviderMetricsSchema,
 });
 export type PublicProviderSummary = z.infer<typeof PublicProviderSummarySchema>;
 
@@ -229,6 +236,8 @@ export const PublicVehicleCardSchema = z.object({
   pricing: PublicPricingSchema,
   /** Present when the search carried dates. */
   estimate: RentalEstimateSchema.nullable(),
+  /** Published reviews of this vehicle (Phase 8). */
+  rating: RatingSummarySchema,
 });
 export type PublicVehicleCard = z.infer<typeof PublicVehicleCardSchema>;
 

@@ -27,6 +27,8 @@ import { and, asc, desc, eq, gte, ilike, isNotNull, lte, or, sql, type SQL } fro
 
 import { ApiException } from '../../common/errors/api.exception';
 import { DATABASE } from '../../database/database.module';
+import { ProviderMetricsService } from '../providers/provider-metrics.service';
+import { ratingAverageSql, ratingCountSql } from '../reviews/rating.aggregates';
 import { VehiclePhotosService } from '../catalogue/vehicle-photos.service';
 import {
   toCard,
@@ -85,6 +87,7 @@ export class DiscoveryService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly photos: VehiclePhotosService,
+    private readonly providerMetrics: ProviderMetricsService,
   ) {}
 
   async search(query: VehicleSearchQuery): Promise<VehicleSearchResponse> {
@@ -233,7 +236,7 @@ export class DiscoveryService {
       .limit(1);
     if (!row) throw new ApiException('NOT_FOUND', 'Vehicle not found', 404);
 
-    const [photoRows, providerRow, vehicleCount] = await Promise.all([
+    const [photoRows, providerRow, vehicleCount, metrics] = await Promise.all([
       this.photos.listActive(row.vehicle.id),
       this.db
         .select({ profile: providerProfiles, place: { slug: places.slug, name: places.name } })
@@ -243,6 +246,7 @@ export class DiscoveryService {
         .limit(1)
         .then((r) => r[0]),
       this.countSearchable(row.provider.id),
+      this.providerMetrics.metricsFor(row.provider.id),
     ]);
     if (!providerRow) throw new ApiException('NOT_FOUND', 'Vehicle not found', 404);
 
@@ -278,7 +282,7 @@ export class DiscoveryService {
     return toDetail(
       row,
       photoRows.map((p) => toPublicPhoto(p, this.photos.variantUrls(p.publicPrefix))),
-      toProviderSummary(providerRow.profile, providerRow.place, vehicleCount),
+      toProviderSummary(providerRow.profile, providerRow.place, vehicleCount, metrics),
       availability,
     );
   }
@@ -355,6 +359,8 @@ export class DiscoveryService {
         distanceKey: centre
           ? sql<number>`coalesce(ST_Distance(${providerLocations.geom}, ${centre}), ${NO_DISTANCE})`
           : sql<number>`${NO_DISTANCE}::float8`,
+        ratingAverage: ratingAverageSql('vehicle_id', sql`${vehicles.id}`),
+        ratingCount: ratingCountSql('vehicle_id', sql`${vehicles.id}`),
       })
       .from(vehicles)
       .innerJoin(providerProfiles, eq(providerProfiles.id, vehicles.providerId))

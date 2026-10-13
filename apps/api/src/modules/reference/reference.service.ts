@@ -1,6 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { ApiErrorDetail, District, PlaceSummary, VehicleCategory } from '@vrp/contracts';
-import { districts, places, vehicleCategories, type Database } from '@vrp/database';
+import {
+  INDICATIVE_RATE_DISCLAIMER,
+  IndicativeRatesSettingSchema,
+  type ApiErrorDetail,
+  type District,
+  type ExchangeRatesResponse,
+  type PlaceSummary,
+  type VehicleCategory,
+} from '@vrp/contracts';
+import {
+  districts,
+  places,
+  platformSettings,
+  vehicleCategories,
+  type Database,
+} from '@vrp/database';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { DATABASE } from '../../database/database.module';
@@ -16,6 +30,29 @@ export interface ApplicationReferences {
 @Injectable()
 export class ReferenceService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
+
+  /**
+   * Indicative LKR → foreign display rates from the `indicative_exchange_rates`
+   * platform setting (operator-maintained; Phase 8, TECH_DECISIONS D60). Never
+   * used for pricing or payment; `available: false` when nothing valid is set.
+   */
+  async exchangeRates(): Promise<ExchangeRatesResponse> {
+    const [row] = await this.db
+      .select({ value: platformSettings.value })
+      .from(platformSettings)
+      .where(eq(platformSettings.key, 'indicative_exchange_rates'))
+      .limit(1);
+    const parsed = IndicativeRatesSettingSchema.safeParse(row?.value);
+    const usable = parsed.success && Object.keys(parsed.data.rates).length > 0;
+    return {
+      base: 'LKR',
+      available: usable,
+      asOf: usable ? parsed.data.asOf : null,
+      source: usable ? parsed.data.source : null,
+      rates: usable ? parsed.data.rates : {},
+      disclaimer: INDICATIVE_RATE_DISCLAIMER,
+    };
+  }
 
   async listDistricts(): Promise<District[]> {
     const rows = await this.db.select().from(districts).orderBy(asc(districts.sortOrder));

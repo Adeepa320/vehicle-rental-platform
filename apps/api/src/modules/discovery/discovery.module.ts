@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { CatalogueModule } from '../catalogue/catalogue.module';
+import { ProvidersModule } from '../providers/providers.module';
 import { DiscoveryService } from './discovery.service';
 import { PlacesController, PublicVehiclesController } from './public-vehicles.controller';
 
@@ -10,7 +11,7 @@ import { PlacesController, PublicVehiclesController } from './public-vehicles.co
  * no booking or quote engine yet (TECH_DECISIONS D44).
  */
 @Module({
-  imports: [CatalogueModule],
+  imports: [CatalogueModule, ProvidersModule],
   controllers: [PublicVehiclesController, PlacesController],
   providers: [DiscoveryService],
 })

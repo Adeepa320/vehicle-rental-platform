@@ -9,6 +9,8 @@ import {
   type PublicPlace,
   type PublicPricing,
   type PublicProviderSummary,
+  type ProviderMetrics,
+  type RatingSummary,
   type PublicVehicleCard,
   type PublicVehicleDetail,
 } from '@vrp/contracts';
@@ -29,6 +31,9 @@ export interface PublicRow {
   districtName: string;
   /** Great-circle metres from the searched centre; null without a centre or a pin. */
   distanceM: number | null;
+  /** Published-review aggregate of the vehicle (Phase 8), computed in SQL. */
+  ratingAverage: string | null;
+  ratingCount: number;
 }
 
 export interface SearchWindow {
@@ -119,7 +124,14 @@ export function toCard(
           window.days,
         )
       : null,
+    rating: toRating(row),
   };
+}
+
+function toRating(row: Pick<PublicRow, 'ratingAverage' | 'ratingCount'>): RatingSummary {
+  return row.ratingCount > 0 && row.ratingAverage !== null
+    ? { average: row.ratingAverage, count: row.ratingCount }
+    : { average: null, count: 0 };
 }
 
 export function toDetail(
@@ -152,6 +164,7 @@ export function toProviderSummary(
   profile: ProviderProfile,
   primaryPlace: { slug: string; name: string },
   vehicleCount: number,
+  metrics: ProviderMetrics,
 ): PublicProviderSummary {
   return {
     id: profile.id,
@@ -164,5 +177,7 @@ export function toProviderSummary(
     primaryPlace,
     districtId: profile.districtId,
     vehicleCount,
+    rating: metrics.rating,
+    metrics,
   };
 }

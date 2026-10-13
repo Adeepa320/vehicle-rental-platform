@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { JobsModule } from './jobs/jobs.module';
 import { BookingsCoreModule } from './modules/bookings/bookings-core.module';
 import { EmailModule } from './modules/notifications/email/email.module';
+import { RemindersModule } from './modules/notifications/reminders/reminders.module';
 
 /**
  * Root module for the background worker process (`node dist/worker.js`).
@@ -20,6 +21,7 @@ import { EmailModule } from './modules/notifications/email/email.module';
     JobsModule,
     EmailModule,
     BookingsCoreModule,
+    RemindersModule,
   ],
 })
 export class WorkerModule {}

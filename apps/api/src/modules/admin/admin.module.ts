@@ -5,10 +5,12 @@ import { EmailModule } from '../notifications/email/email.module';
 import { CatalogueModule } from '../catalogue/catalogue.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { ProvidersModule } from '../providers/providers.module';
+import { ReviewsModule } from '../reviews/reviews.module';
 import { AdminBookingsController } from './admin-bookings.controller';
 import { AdminPaymentsController } from './admin-payments.controller';
 import { AdminProviderApplicationsController } from './admin-provider-applications.controller';
 import { AdminProvidersController } from './admin-providers.controller';
+import { AdminReviewsController } from './admin-reviews.controller';
 import { AdminVehicleReviewService } from './admin-vehicle-review.service';
 import { AdminVehiclesController } from './admin-vehicles.controller';
 import { AdminReviewService } from './admin-review.service';
@@ -20,13 +22,21 @@ import { AdminReviewService } from './admin-review.service';
  * confirmation; no dashboard, no unrelated metrics.
  */
 @Module({
-  imports: [ProvidersModule, CatalogueModule, EmailModule, BookingsModule, PaymentsModule],
+  imports: [
+    ProvidersModule,
+    CatalogueModule,
+    EmailModule,
+    BookingsModule,
+    PaymentsModule,
+    ReviewsModule,
+  ],
   controllers: [
     AdminProviderApplicationsController,
     AdminProvidersController,
     AdminVehiclesController,
     AdminBookingsController,
     AdminPaymentsController,
+    AdminReviewsController,
   ],
   providers: [AdminReviewService, AdminVehicleReviewService],
 })
