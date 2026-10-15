@@ -25,6 +25,19 @@ export const LkrAmountSchema = z.string().trim().regex(AMOUNT_PATTERN, {
 });
 export type LkrAmount = z.infer<typeof LkrAmountSchema>;
 
+/** `AMOUNT_PATTERN` with an optional leading minus, for platform-computed differences. */
+export const SIGNED_AMOUNT_PATTERN = /^-?(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/;
+
+/**
+ * A computed difference that may be negative (a period's
+ * `estimatedPlatformRevenue` when earlier advances are refunded in it).
+ * Never accepted as an input amount.
+ */
+export const SignedLkrAmountSchema = z.string().trim().regex(SIGNED_AMOUNT_PATTERN, {
+  message: 'a signed amount in LKR with at most two decimals',
+  abort: true,
+});
+
 /** Standard money object (API_DESIGN §1.2). */
 export const MoneySchema = z.object({
   amount: LkrAmountSchema,

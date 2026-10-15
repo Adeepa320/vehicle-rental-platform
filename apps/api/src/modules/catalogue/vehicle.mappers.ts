@@ -111,6 +111,7 @@ export function toVehicleSummary(row: Vehicle, photos: VehiclePhotoView[]): Vehi
 
 export type OwnerRow = Pick<User, 'id' | 'email' | 'fullName'>;
 
+/** Everything but the operations panel, which the admin facade computes separately (Phase 9). */
 export function toAdminVehicle(
   row: Vehicle,
   provider: ProviderProfile,
@@ -118,7 +119,7 @@ export function toAdminVehicle(
   location: ProviderLocation | null,
   locationVehicleCount: number,
   photos: VehiclePhotoView[],
-): AdminVehicle {
+): Omit<AdminVehicle, 'operations'> {
   return {
     ...toVehicle(row, photos),
     adminNotes: row.adminNotes,

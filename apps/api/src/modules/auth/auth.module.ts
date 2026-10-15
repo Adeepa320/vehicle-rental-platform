@@ -25,6 +25,6 @@ import { TokenService } from './token.service';
     RolesGuard,
     OriginGuard,
   ],
-  exports: [TokenService, JwtAuthGuard, RolesGuard],
+  exports: [TokenService, JwtAuthGuard, RolesGuard, RefreshTokenService],
 })
 export class AuthModule {}

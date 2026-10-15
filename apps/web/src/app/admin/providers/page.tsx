@@ -10,10 +10,10 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
 import { FormMessage } from '@/components/auth/form-primitives';
-import { ReasonAction } from '@/components/admin/reason-action';
 import { AdminNav } from '@/components/admin/admin-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRequireAuth } from '@/lib/auth/use-require-auth';
 import { submitErrorFrom } from '@/lib/forms';
@@ -55,7 +55,8 @@ export default function AdminProvidersPage() {
         <h1 className="text-3xl font-semibold tracking-tight">Provider review</h1>
         <p className="text-muted-foreground text-sm">
           Review is manual: confirm contact details and operating area with the applicant
-          (phone/e-mail) before approving. No documents are collected in this phase.
+          (phone/e-mail) before approving. Verification documents are reviewed separately under
+          Documents; open a provider for its operational panel and suspension controls.
         </p>
       </header>
       <div className="flex gap-2">
@@ -194,18 +195,25 @@ function ApplicationsList() {
 function ProvidersList() {
   const { api, withAccessToken } = useAuth();
   const [status, setStatus] = useState<ProviderStatus | ''>('');
+  const [q, setQ] = useState('');
   const [rows, setRows] = useState<AdminProviderSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const search = q.trim();
   const load = useCallback(
     async (cursor?: string) => {
       setLoading(true);
       setError(null);
       try {
         const page = await withAccessToken((token) =>
-          api.admin.listProviders(token, { status: status || undefined, cursor, limit: 20 }),
+          api.admin.listProviders(token, {
+            status: status || undefined,
+            q: search.length >= 2 ? search : undefined,
+            cursor,
+            limit: 20,
+          }),
         );
         setRows((current) => (cursor ? [...current, ...page.data] : page.data));
         setNextCursor(page.nextCursor);
@@ -215,26 +223,13 @@ function ProvidersList() {
         setLoading(false);
       }
     },
-    [api, status, withAccessToken],
+    [api, search, status, withAccessToken],
   );
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
   }, [load]);
-
-  const replaceRow = (updated: {
-    id: string;
-    status: ProviderStatus;
-    suspendedAt: string | null;
-  }) =>
-    setRows((current) =>
-      current.map((r) =>
-        r.id === updated.id
-          ? { ...r, status: updated.status, suspendedAt: updated.suspendedAt }
-          : r,
-      ),
-    );
 
   return (
     <section className="grid gap-4">
@@ -252,6 +247,12 @@ function ProvidersList() {
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
         </select>
+        <Input
+          className="w-64"
+          placeholder="Search name, slug or owner (2+ characters)"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
       {error ? <FormMessage variant="destructive">{error}</FormMessage> : null}
       <div className="grid gap-3">
@@ -259,45 +260,30 @@ function ProvidersList() {
           <div key={row.id} className="rounded-md border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-medium">{row.displayName}</p>
+                <Link
+                  href={`/admin/providers/${row.id}`}
+                  className="font-medium underline underline-offset-4"
+                >
+                  {row.displayName}
+                </Link>
                 <p className="text-muted-foreground text-xs">
                   {row.owner.fullName} · {row.owner.email} · {row.districtId} · approved{' '}
                   {formatDate(row.approvedAt)}
                 </p>
               </div>
-              <Badge variant={PROVIDER_STATUS[row.status].tone}>
-                {PROVIDER_STATUS[row.status].label}
-              </Badge>
-            </div>
-            <div className="mt-3">
-              {row.status === 'active' ? (
-                <ReasonAction
-                  label="Suspend provider"
-                  confirmLabel="Suspend"
-                  variant="destructive"
-                  placeholder="Reason shown to the provider (min 5 characters)"
-                  onConfirm={async (reason) => {
-                    const updated = await withAccessToken((token) =>
-                      api.admin.suspendProvider(token, row.id, reason),
-                    );
-                    replaceRow(updated);
-                  }}
-                />
-              ) : (
-                <ReasonAction
-                  label="Reactivate provider"
-                  confirmLabel="Reactivate"
-                  variant="default"
-                  optional
-                  placeholder="Internal note (optional)"
-                  onConfirm={async (note) => {
-                    const updated = await withAccessToken((token) =>
-                      api.admin.reactivateProvider(token, row.id, note || undefined),
-                    );
-                    replaceRow(updated);
-                  }}
-                />
-              )}
+              <div className="flex items-center gap-2">
+                <Badge variant={PROVIDER_STATUS[row.status].tone}>
+                  {PROVIDER_STATUS[row.status].label}
+                </Badge>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  nativeButton={false}
+                  render={<Link href={`/admin/providers/${row.id}`} />}
+                >
+                  Open
+                </Button>
+              </div>
             </div>
           </div>
         ))}

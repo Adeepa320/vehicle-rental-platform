@@ -14,6 +14,11 @@ import {
   type AcceptBookingRequest,
   type AdminBooking,
   type AdminBookingListQuery,
+  type AdminCancelBookingRequest,
+  type AdminCancellationActor,
+  type CancellationPreview,
+  type ResendNotificationResponse,
+  type ResendTemplate,
   type Booking as BookingView,
   type BookingContact,
   type BookingList,
@@ -36,8 +41,11 @@ import {
   bookingDrivers,
   bookingIdempotencyKeys,
   bookings,
+  disputes,
   providerLocations,
   providerProfiles,
+  reviews,
+  users,
   vehicleCategories,
   vehicleHolds,
   vehicles,
@@ -50,9 +58,10 @@ import {
   type ProviderProfile,
   type Vehicle,
 } from '@vrp/database';
-import { and, desc, eq, gt, inArray, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, ilike, inArray, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { PinoLogger } from 'nestjs-pino';
 
+import { addDays } from '../../common/colombo-dates';
 import { ApiException } from '../../common/errors/api.exception';
 import { decodeCursor, paginate } from '../../common/pagination';
 import type { Env } from '../../config/env.schema';
@@ -63,13 +72,22 @@ import { isDeadlock, isExclusionViolation } from '../catalogue/catalogue.helpers
 import { VehiclePhotosService } from '../catalogue/vehicle-photos.service';
 import { toPublicPricing } from '../discovery/public.mappers';
 import { searchableCondition } from '../discovery/searchable';
+import { providerDocumentsVerifiedSql } from '../documents/document.verification';
 import { toAdminPayment } from '../payments/payment.mappers';
 import {
+  cancellationRefundDecision,
   loadPaymentEventsFor,
   loadPaymentsForBookings,
   settlePaymentsOnCancellation,
+  successfulAdvance,
 } from '../payments/payment.persistence';
 import { paymentCancellationRefundEmail } from '../notifications/email/payment-templates';
+import {
+  paymentReminderEmail,
+  pickupReminderCustomerEmail,
+  reviewReminderEmail,
+} from '../notifications/email/reminder-templates';
+import { maskEmail } from '../notifications/email/email.service';
 import {
   bookingAcceptedEmail,
   bookingCancelledEmail,
@@ -447,13 +465,26 @@ export class BookingsService {
   }
 
   async listForAdmin(query: AdminBookingListQuery): Promise<BookingList> {
+    const q = query.q ? `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : undefined;
     return this.list(
       'admin',
       and(
         query.status ? eq(bookings.status, query.status) : undefined,
         query.providerId ? eq(bookings.providerId, query.providerId) : undefined,
         query.customerId ? eq(bookings.customerUserId, query.customerId) : undefined,
+        query.vehicleId ? eq(bookings.vehicleId, query.vehicleId) : undefined,
         query.reference ? eq(bookings.reference, query.reference.toUpperCase()) : undefined,
+        q
+          ? or(
+              ilike(bookings.reference, q),
+              sql`exists (select 1 from ${users} u where u.id = ${bookings.customerUserId} and (u.email ilike ${q} or u.full_name ilike ${q}))`,
+            )
+          : undefined,
+        // Rental period overlapping the inclusive Colombo day range.
+        query.to
+          ? lt(bookings.startsAt, new Date(`${addDays(query.to, 1)}T00:00:00+05:30`))
+          : undefined,
+        query.from ? gte(bookings.endsAt, new Date(`${query.from}T00:00:00+05:30`)) : undefined,
       ),
       query,
     );
@@ -484,17 +515,375 @@ export class BookingsService {
       holdOfBooking(this.db, id),
       this.viewContext(ctx, 'admin'),
     ]);
-    const eventsByPayment = await loadPaymentEventsFor(
-      this.db,
-      view.payments.map((p) => p.id),
-    );
+    const [eventsByPayment, [dispute], [review]] = await Promise.all([
+      loadPaymentEventsFor(
+        this.db,
+        view.payments.map((p) => p.id),
+      ),
+      this.db
+        .select({ id: disputes.id, status: disputes.status })
+        .from(disputes)
+        .where(eq(disputes.bookingId, id))
+        .limit(1),
+      this.db
+        .select({ id: reviews.id, status: reviews.status })
+        .from(reviews)
+        .where(eq(reviews.bookingId, id))
+        .limit(1),
+    ]);
     return toAdminBookingView(
       ctx,
       view,
       events,
       hold ?? null,
       view.payments.map((p) => toAdminPayment(p, eventsByPayment.get(p.id) ?? [])),
+      {
+        dispute: dispute ?? null,
+        review: review ?? null,
+        resendableTemplates: this.resendableTemplates(
+          ctx,
+          view.payments,
+          view.now,
+          review !== undefined,
+        ),
+      },
     );
+  }
+
+  // ======================================================= admin operations
+
+  /**
+   * What an admin cancellation would do, without doing it (Phase 9, USER_FLOWS
+   * §3.6): the resulting status, whether the hold is released and the refund
+   * consequence under the one cancellation rule (`cancellationRefundDecision`,
+   * shared with the real settlement so the preview can never disagree).
+   */
+  async cancellationPreview(
+    id: string,
+    actor: AdminCancellationActor,
+    now = new Date(),
+  ): Promise<CancellationPreview> {
+    const ctx = await this.contextOrThrow(this.db, id);
+    const settings = await this.settings.get();
+    const action = this.adminCancelAction(actor);
+    const { from, to } = BOOKING_TRANSITIONS[action];
+    const allowed = from.includes(ctx.booking.status);
+    const paymentRows = (await loadPaymentsForBookings(this.db, [id])).get(id) ?? [];
+    const paid = successfulAdvance(paymentRows);
+    const advancePaid = paid !== undefined && paid.status === 'paid';
+    const decision = cancellationRefundDecision(ctx.booking.startsAt, {
+      cancelledBy: actor,
+      fullRefundHours: settings.cancellationFullRefundHours,
+      now,
+    });
+    return {
+      actor,
+      allowed,
+      reason: allowed
+        ? null
+        : ctx.booking.status === 'active'
+          ? 'A rental in progress is returned by the provider, not cancelled'
+          : `A ${ctx.booking.status.replaceAll('_', ' ')} booking cannot be cancelled`,
+      resultingStatus: allowed ? to : null,
+      holdWillBeReleased: allowed && holdsVehicle(ctx.booking.status),
+      advancePaid,
+      advanceAmount: ctx.booking.advanceAmount,
+      refundDueAmount: advancePaid
+        ? decision.fullRefund
+          ? (paid as { amount: string }).amount
+          : '0.00'
+        : null,
+      forfeited: advancePaid && !decision.fullRefund,
+      hoursBeforePickup: Math.round(decision.hoursBeforePickup * 100) / 100,
+      fullRefundHours: settings.cancellationFullRefundHours,
+    };
+  }
+
+  /**
+   * Admin cancellation on behalf of a party or of the platform (Phase 9).
+   * Same transaction shape as the participant cancellations: booking row
+   * locked, state machine checked, hold released exactly once, the one
+   * refund rule applied, timeline + audit + notifications in one commit.
+   * Never from `active` (the machine has no such transition) and never
+   * from a final status.
+   */
+  async cancelByAdmin(
+    admin: AuthenticatedUser,
+    id: string,
+    input: AdminCancelBookingRequest,
+    meta: RequestMeta,
+    now = new Date(),
+  ): Promise<AdminBooking> {
+    const settings = await this.settings.get();
+    const action = this.adminCancelAction(input.actor);
+    await this.db.transaction(async (tx) => {
+      const current = await this.lockOwn(tx, id);
+      this.assertVersion(current, input.version);
+      this.assertCanTransition(current, action);
+      const released = holdsVehicle(current.status) ? await releaseBookingHold(tx, id) : undefined;
+      const settlement = await settlePaymentsOnCancellation(tx, current, {
+        cancelledBy: input.actor,
+        fullRefundHours: settings.cancellationFullRefundHours,
+        now,
+      });
+      const cancelled = await this.transition(tx, current, action, {
+        cancelledAt: now,
+        cancelledBy: admin.id,
+        cancellationNote: input.reason,
+      });
+      await recordBookingEvent(tx, {
+        bookingId: id,
+        actorType: 'admin',
+        actorUserId: admin.id,
+        action: 'booking.cancelled',
+        fromStatus: current.status,
+        toStatus: cancelled.status,
+        metadata: {
+          by: input.actor,
+          onBehalf: input.actor !== 'platform',
+          holdReleased: released !== undefined,
+          refundDueAmount: settlement.refundDueAmount,
+        },
+      });
+      await this.audit.record(
+        {
+          actorUserId: admin.id,
+          actorType: 'admin',
+          action: 'booking.cancelled_by_admin',
+          targetType: 'booking',
+          targetId: id,
+          reason: input.reason,
+          ip: meta.ip ?? null,
+          metadata: {
+            actor: input.actor,
+            fromStatus: current.status,
+            toStatus: cancelled.status,
+            holdReleased: released !== undefined,
+            refundDueAmount: settlement.refundDueAmount,
+            paidPaymentId: settlement.paidPaymentId,
+          },
+        },
+        tx,
+      );
+      const ctx = await this.contextOrThrow(tx, id);
+      const title = vehicleTitleOf(ctx.vehicle);
+      const by =
+        input.actor === 'platform'
+          ? 'the platform team'
+          : input.actor === 'customer'
+            ? 'the platform team on behalf of the customer'
+            : 'the platform team on behalf of the provider';
+      await this.notify(tx, {
+        userId: ctx.customer.id,
+        type: 'booking.cancelled',
+        title: `Booking ${ctx.booking.reference} was cancelled`,
+        body: `${title} was cancelled by ${by}. ${refundNoteFor(settlement) ?? 'Nothing was charged.'} Reason: ${input.reason}`,
+        linkPath: `/bookings/${id}`,
+        bookingId: id,
+        key: 'cancelled:admin',
+      });
+      await this.notify(tx, {
+        userId: ctx.owner.id,
+        type: 'booking.cancelled',
+        title: `Booking ${ctx.booking.reference} was cancelled`,
+        body: `${title} was cancelled by ${by}; the dates are free again. Reason: ${input.reason}`,
+        linkPath: `/provider/bookings/${id}`,
+        bookingId: id,
+        key: 'cancelled:admin:provider',
+      });
+      await this.email.enqueue(
+        bookingCancelledEmail({
+          ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
+          cancelledBy:
+            input.actor === 'customer'
+              ? 'customer'
+              : input.actor === 'provider'
+                ? 'provider'
+                : 'platform',
+          counterpartName:
+            input.actor === 'customer' ? `${APP_NAME} (on your behalf)` : ctx.provider.displayName,
+          note: input.reason,
+          refundNote: refundNoteFor(settlement),
+        }),
+        tx,
+      );
+      await this.email.enqueue(
+        bookingCancelledEmail({
+          ...bookingEmailBase(ctx, ctx.owner, this.providerLink(id)),
+          cancelledBy:
+            input.actor === 'provider'
+              ? 'provider'
+              : input.actor === 'customer'
+                ? 'customer'
+                : 'platform',
+          counterpartName:
+            input.actor === 'provider' ? `${APP_NAME} (on your behalf)` : ctx.customer.fullName,
+          note: input.reason,
+          refundNote: null,
+        }),
+        tx,
+      );
+      this.logger.info(
+        { bookingId: id, adminId: admin.id, actor: input.actor },
+        'Booking cancelled by admin',
+      );
+    });
+    return this.getForAdmin(id);
+  }
+
+  /**
+   * Re-sends one allow-listed transactional e-mail (Phase 9). The template
+   * must apply to the booking's current state; recipient, subject and body
+   * are derived from the booking, never from the request. E-mail only: the
+   * in-app feed already holds the original event.
+   */
+  async resendNotification(
+    admin: AuthenticatedUser,
+    id: string,
+    template: ResendTemplate,
+    meta: RequestMeta,
+    now = new Date(),
+  ): Promise<ResendNotificationResponse> {
+    const ctx = await this.contextOrThrow(this.db, id);
+    const settings = await this.settings.get();
+    const paymentRows = (await loadPaymentsForBookings(this.db, [id])).get(id) ?? [];
+    const [review] = await this.db
+      .select({ id: reviews.id })
+      .from(reviews)
+      .where(eq(reviews.bookingId, id))
+      .limit(1);
+    const applicable = this.resendableTemplates(ctx, paymentRows, now, review !== undefined);
+    if (!applicable.includes(template)) {
+      throw new ApiException(
+        'INVALID_STATE_TRANSITION',
+        `"${template.replaceAll('_', ' ')}" does not apply to a ${ctx.booking.status.replaceAll('_', ' ')} booking right now`,
+        409,
+      );
+    }
+    const b = ctx.booking;
+    let recipientRole: 'customer' | 'provider' = 'customer';
+    let message;
+    switch (template) {
+      case 'booking_confirmation': {
+        const paid = successfulAdvance(paymentRows);
+        message = bookingConfirmedCustomerEmail({
+          ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
+          providerName: ctx.provider.displayName,
+          pickupAddress: ctx.location.addressText,
+          pickupInstructions: ctx.location.pickupInstructions,
+          advancePaid: paid?.amount ?? b.advanceAmount,
+          balanceDue: b.balanceDueAmount,
+          securityDeposit: b.securityDepositAmount,
+        });
+        break;
+      }
+      case 'payment_reminder':
+        message = paymentReminderEmail({
+          ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
+          providerName: ctx.provider.displayName,
+          advance: b.advanceAmount,
+          confirmBy: b.confirmBy as Date,
+        });
+        break;
+      case 'pickup_reminder':
+        message = pickupReminderCustomerEmail({
+          ...bookingEmailBase(ctx, ctx.customer, this.customerLink(id)),
+          providerName: ctx.provider.displayName,
+          pickupAddress: ctx.location.addressText,
+          pickupInstructions: ctx.location.pickupInstructions,
+          balanceDue: b.balanceDueAmount,
+          securityDeposit: b.securityDepositAmount,
+        });
+        break;
+      case 'cancellation_notice': {
+        const toProvider = b.status === 'cancelled_by_customer';
+        recipientRole = toProvider ? 'provider' : 'customer';
+        const paid = successfulAdvance(paymentRows);
+        const refundDue =
+          paid &&
+          paid.status === 'paid' &&
+          paid.refundDueAmount &&
+          compareAmounts(paid.refundDueAmount, '0') > 0
+            ? paid.refundDueAmount
+            : null;
+        message = bookingCancelledEmail({
+          ...bookingEmailBase(
+            ctx,
+            toProvider ? ctx.owner : ctx.customer,
+            toProvider ? this.providerLink(id) : this.customerLink(id),
+          ),
+          cancelledBy:
+            b.status === 'cancelled_by_customer'
+              ? 'customer'
+              : b.status === 'cancelled_by_provider'
+                ? 'provider'
+                : 'platform',
+          counterpartName: toProvider ? ctx.customer.fullName : ctx.provider.displayName,
+          note: b.cancellationNote,
+          refundNote:
+            !toProvider && refundDue
+              ? `The advance of ${formatLkr(refundDue)} will be refunded to you; our team will confirm the method and timing.`
+              : null,
+        });
+        break;
+      }
+      case 'review_request':
+        message = reviewReminderEmail({
+          ...bookingEmailBase(ctx, ctx.customer, `${this.webAppUrl}/bookings/${id}/review`),
+          providerName: ctx.provider.displayName,
+          windowClosesAt: new Date(
+            (b.completedAt as Date).getTime() + settings.reviewWindowDays * DAY_MS,
+          ),
+        });
+        break;
+    }
+    await this.db.transaction(async (tx) => {
+      await this.email.enqueue(message, tx);
+      await this.audit.record(
+        {
+          actorUserId: admin.id,
+          actorType: 'admin',
+          action: 'booking.notification_resent',
+          targetType: 'booking',
+          targetId: id,
+          ip: meta.ip ?? null,
+          metadata: { template, recipientRole },
+        },
+        tx,
+      );
+    });
+    return {
+      template,
+      recipientRole,
+      recipient: maskEmail(message.to),
+      sentAt: now.toISOString(),
+    };
+  }
+
+  private adminCancelAction(actor: AdminCancellationActor): BookingTransitionAction {
+    return actor === 'customer'
+      ? 'cancel_by_customer'
+      : actor === 'provider'
+        ? 'cancel_by_provider'
+        : 'cancel_by_platform';
+  }
+
+  /** Templates that make sense for the booking's current state (API_DESIGN §13 resend). */
+  private resendableTemplates(
+    ctx: BookingContext,
+    paymentRows: readonly { status: string }[],
+    now: Date,
+    hasReview: boolean,
+  ): ResendTemplate[] {
+    const b = ctx.booking;
+    const out: ResendTemplate[] = [];
+    if (['confirmed', 'active', 'completed'].includes(b.status)) out.push('booking_confirmation');
+    if (b.status === 'accepted' && b.confirmBy && b.confirmBy > now) out.push('payment_reminder');
+    if (b.status === 'confirmed' && b.startsAt > now) out.push('pickup_reminder');
+    if (b.status.startsWith('cancelled_')) out.push('cancellation_notice');
+    if (b.status === 'completed' && b.completedAt && !hasReview) out.push('review_request');
+    void paymentRows;
+    return out;
   }
 
   /**
@@ -1211,13 +1600,14 @@ export class BookingsService {
       rows.map((row) => ({ ...row, createdAt: row.booking.createdAt, id: row.booking.id })),
       query.limit,
     );
-    const [photos, settings, paymentsByBooking] = await Promise.all([
+    const [photos, settings, paymentsByBooking, verified] = await Promise.all([
       this.photos.listActiveFor(page.data.map((r) => r.vehicle.id)),
       this.settings.get(),
       loadPaymentsForBookings(
         this.db,
         page.data.map((r) => r.booking.id),
       ),
+      this.providerVerificationFlags(page.data.map((r) => r.provider.id)),
     ]);
     const now = new Date();
     return {
@@ -1228,10 +1618,31 @@ export class BookingsService {
           now,
           payments: paymentsByBooking.get(row.booking.id) ?? [],
           thumbnailUrl: this.thumbnail(photos.get(row.vehicle.id)?.[0]?.publicPrefix),
+          providerDocumentsVerified: verified.get(row.provider.id) ?? false,
         }),
       ),
       nextCursor: page.nextCursor,
     };
+  }
+
+  /** "Verified provider" flags (Phase 9), computed by the same SQL rule as the public search. */
+  private async providerVerificationFlags(
+    providerIds: readonly string[],
+  ): Promise<Map<string, boolean>> {
+    const ids = [...new Set(providerIds)];
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        id: providerProfiles.id,
+        verified: providerDocumentsVerifiedSql(
+          sql`${providerProfiles.id}`,
+          sql`${providerProfiles.providerType}`,
+        ),
+      })
+      .from(providerProfiles)
+      .innerJoin(users, eq(users.id, providerProfiles.userId))
+      .where(inArray(providerProfiles.id, ids));
+    return new Map(rows.map((r) => [r.id, r.verified === true]));
   }
 
   private statusFilter(
@@ -1258,10 +1669,11 @@ export class BookingsService {
   }
 
   private async viewContext(ctx: BookingContext, viewer: BookingViewer): Promise<ViewContext> {
-    const [settings, photos, paymentsByBooking] = await Promise.all([
+    const [settings, photos, paymentsByBooking, verified] = await Promise.all([
       this.settings.get(),
       this.photos.listActiveFor([ctx.vehicle.id]),
       loadPaymentsForBookings(this.db, [ctx.booking.id]),
+      this.providerVerificationFlags([ctx.provider.id]),
     ]);
     return {
       viewer,
@@ -1269,6 +1681,7 @@ export class BookingsService {
       now: new Date(),
       payments: paymentsByBooking.get(ctx.booking.id) ?? [],
       thumbnailUrl: this.thumbnail(photos.get(ctx.vehicle.id)?.[0]?.publicPrefix),
+      providerDocumentsVerified: verified.get(ctx.provider.id) ?? false,
     };
   }
 

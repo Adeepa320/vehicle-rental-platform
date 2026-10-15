@@ -18,7 +18,13 @@ import type { VehicleEditability, VehicleStatus } from '@vrp/contracts';
  */
 export type ProviderVehicleAction = 'submit' | 'deactivate' | 'activate';
 export type AdminVehicleAction =
-  'start_review' | 'request_changes' | 'approve' | 'reject' | 'suspend' | 'reactivate';
+  | 'start_review'
+  | 'request_changes'
+  | 'approve'
+  | 'reject'
+  | 'suspend'
+  | 'reactivate'
+  | 'moderate_photos';
 
 interface Transition {
   from: readonly VehicleStatus[];
@@ -38,6 +44,12 @@ export const ADMIN_VEHICLE_TRANSITIONS: Readonly<Record<AdminVehicleAction, Tran
   reject: { from: ['submitted', 'under_review'], to: 'rejected' },
   suspend: { from: ['approved', 'inactive'], to: 'suspended' },
   reactivate: { from: ['suspended'], to: 'approved' },
+  /**
+   * Phase 9 photo moderation: when an admin removal leaves a live listing below
+   * the photo minimum, it goes back to the provider for new photos and a
+   * re-review instead of lingering invisible and unfixable.
+   */
+  moderate_photos: { from: ['approved', 'inactive', 'suspended'], to: 'changes_requested' },
 };
 
 /** Statuses in which a provider may manage availability blocks. */

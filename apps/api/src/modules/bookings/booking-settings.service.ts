@@ -24,6 +24,14 @@ export interface BookingSettings {
   pickupReminderHoursBefore: number;
   /** One review reminder this many days after completion when no review exists (Phase 8). */
   reviewReminderDaysAfter: number;
+  /** Days after completion / no-show / cancellation during which a dispute may be opened (Phase 9). */
+  disputeWindowDays: number;
+  /** Pause (suspend) a listing when an approved revenue licence / insurance expires (Phase 9). */
+  autoPauseOnDocumentExpiry: boolean;
+  /** Search radius when the searched place has none of its own (Phase 9 makes the setting live). */
+  defaultSearchRadiusKm: number;
+  /** Largest radius a client may request; larger values are clamped. */
+  maxSearchRadiusKm: number;
 }
 
 export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
@@ -37,6 +45,10 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   paymentReminderHoursBefore: 6,
   pickupReminderHoursBefore: 24,
   reviewReminderDaysAfter: 3,
+  disputeWindowDays: 14,
+  autoPauseOnDocumentExpiry: true,
+  defaultSearchRadiusKm: 15,
+  maxSearchRadiusKm: 50,
 };
 
 const KEYS = [
@@ -50,8 +62,13 @@ const KEYS = [
   'payment_reminder_hours_before',
   'pickup_reminder_hours_before',
   'review_reminder_days_after',
+  'dispute_window_days',
+  'auto_pause_on_document_expiry',
+  'default_search_radius_km',
+  'max_search_radius_km',
 ] as const;
 const Percent = z.number().min(1).max(100);
+const Km = z.number().min(1).max(200);
 
 const Hours = z
   .number()
@@ -118,6 +135,18 @@ export class BookingSettingsService {
         byKey.get('review_reminder_days_after'),
         d.reviewReminderDaysAfter,
       ),
+      disputeWindowDays: pick(Days, byKey.get('dispute_window_days'), d.disputeWindowDays),
+      autoPauseOnDocumentExpiry: pick(
+        z.boolean(),
+        byKey.get('auto_pause_on_document_expiry'),
+        d.autoPauseOnDocumentExpiry,
+      ),
+      defaultSearchRadiusKm: pick(
+        Km,
+        byKey.get('default_search_radius_km'),
+        d.defaultSearchRadiusKm,
+      ),
+      maxSearchRadiusKm: pick(Km, byKey.get('max_search_radius_km'), d.maxSearchRadiusKm),
     };
     this.cached = { value, at: Date.now() };
     return value;

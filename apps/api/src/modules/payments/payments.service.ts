@@ -731,6 +731,8 @@ export class PaymentsService {
         orderId: locked.orderId,
         gatewayPaymentId: locked.gatewayPaymentId,
         metadata: { mode: input.mode, amount: input.amount, reference, full },
+        // Dated like `refunded_at`: the reports sum these movements per period (D66).
+        createdAt: now,
       });
       await this.audit.record(
         {

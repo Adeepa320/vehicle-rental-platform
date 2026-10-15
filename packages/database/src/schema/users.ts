@@ -56,7 +56,12 @@ export const users = pgTable(
      * still be invalidated immediately.
      */
     sessionsRevokedAt: timestamp('sessions_revoked_at', { withTimezone: true }),
+    /** Admin suspension (Phase 9): who, when and why; cleared on reactivation. */
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    suspendedBy: uuid('suspended_by'),
+    suspensionReason: text('suspension_reason'),
     ...auditColumns,
+    /** Set by anonymisation (Phase 9): the row stays for history, the PII is gone. */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [

@@ -26,6 +26,23 @@ export const NotificationTypeSchema = z.enum([
   'review.replied',
   'review.hidden',
   'review.unhidden',
+  // Phase 9 — admin operations
+  'account.suspended',
+  'account.reactivated',
+  'document.approved',
+  'document.rejected',
+  'document.replacement_requested',
+  'document.expiring',
+  'document.expired',
+  'vehicle.suspended',
+  'vehicle.reactivated',
+  'vehicle.auto_paused',
+  'vehicle.photo_removed',
+  'vehicle.category_corrected',
+  'dispute.opened',
+  'dispute.message',
+  'dispute.resolved',
+  'dispute.rejected',
 ]);
 export type NotificationType = z.infer<typeof NotificationTypeSchema>;
 

@@ -36,6 +36,8 @@ export interface BookingCustomer {
   phoneE164: string | null;
   emailVerifiedAt: Date | null;
   createdAt: Date;
+  /** `deleted` once the account was anonymised (Phase 9): views show a neutral name. */
+  status: 'active' | 'suspended' | 'deleted';
 }
 
 export interface BookingOwner {
@@ -76,6 +78,7 @@ function contextQuery(executor: DatabaseExecutor) {
         phoneE164: customerUser.phoneE164,
         emailVerifiedAt: customerUser.emailVerifiedAt,
         createdAt: customerUser.createdAt,
+        status: customerUser.status,
       },
       owner: { id: ownerUser.id, fullName: ownerUser.fullName, email: ownerUser.email },
       driver: bookingDrivers,

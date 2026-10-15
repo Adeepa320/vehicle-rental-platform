@@ -54,6 +54,7 @@ export function bookingFixture(overrides: Partial<Booking> = {}): Booking {
       slug: 'sunil-rentals',
       displayName: 'Sunil Rentals',
       platformApproved: true,
+      documentsVerified: false,
     },
     customer: { id: ID, name: 'Nimal Perera', memberSince: '2026-10', emailVerified: true },
     driver: {
@@ -230,6 +231,9 @@ describe('api client (bookings)', () => {
       providerEmail: 'sunil@example.com',
       hold: null,
       payments: [],
+      dispute: null,
+      review: null,
+      resendableTemplates: ['booking_confirmation'],
     });
     const result = await api.admin.getBooking('t', ID);
     expect(result.confirmationSource).toBe('payment');

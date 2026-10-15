@@ -81,6 +81,13 @@ export const BOOKING_STATUS: Record<
     customer: 'The provider recorded that the vehicle was not picked up.',
     provider: 'Recorded as a no-show; the dates are free again.',
   },
+  cancelled_by_platform: {
+    label: 'Cancelled by platform',
+    tone: 'destructive',
+    customer:
+      'The platform team cancelled this booking. Any advance you paid is refunded in full; our team will confirm the method and timing.',
+    provider: 'The platform team cancelled this booking; the dates are free again.',
+  },
 };
 
 export const PROVIDER_DECLINE_REASONS: { value: ProviderDeclineReason; label: string }[] =

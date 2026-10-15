@@ -25,6 +25,23 @@ export function resolveRequestId(req: IncomingMessage, res: ServerResponse): str
   return id;
 }
 
+/**
+ * Request log projection (SECURITY_AND_PRIVACY §12): the path and the names
+ * of the query parameters are logged, never their values — admin searches
+ * (`?q=<e-mail>`), dates and ids would otherwise end up in the log files.
+ * Receives pino-http's standard serialized request (`wrapSerializers`).
+ */
+export function redactRequestForLog(req: Record<string, unknown>): Record<string, unknown> {
+  const url = typeof req.url === 'string' ? req.url : '';
+  const [path, query] = url.split('?', 2);
+  const { query: _query, params: _params, ...rest } = req;
+  return {
+    ...rest,
+    url: path,
+    ...(query ? { queryKeys: [...new Set(new URLSearchParams(query).keys())].sort() } : {}),
+  };
+}
+
 @Module({
   imports: [
     LoggerModule.forRootAsync({
@@ -47,6 +64,7 @@ export function resolveRequestId(req: IncomingMessage, res: ServerResponse): str
               ],
               censor: '[REDACTED]',
             },
+            serializers: { req: redactRequestForLog },
             transport:
               nodeEnv === 'development'
                 ? {

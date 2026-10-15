@@ -4,14 +4,18 @@ import {
   AdminVehicleListQuerySchema,
   AdminVehicleListSchema,
   AdminVehicleSchema,
+  CorrectVehicleCategoryRequestSchema,
   ReactivateVehicleRequestSchema,
+  RemoveVehiclePhotoRequestSchema,
   SuspendVehicleRequestSchema,
   VehicleReviewNotesRequestSchema,
   VehicleReviewReasonRequestSchema,
   type AdminVehicle,
   type AdminVehicleList,
   type AdminVehicleListQuery,
+  type CorrectVehicleCategoryRequest,
   type ReactivateVehicleRequest,
+  type RemoveVehiclePhotoRequest,
   type SuspendVehicleRequest,
   type VehicleReviewNotesRequest,
   type VehicleReviewReasonRequest,
@@ -30,6 +34,11 @@ import { AdminVehicleReviewService } from './admin-vehicle-review.service';
 
 const IdPipe = new ZodValidationPipe(z.uuid());
 
+/**
+ * Listing review (Phase 4) and listing operations (Phase 9): search, pause /
+ * reactivate, category correction and photo moderation. Prices and the
+ * provider-controlled commercial fields are never edited here.
+ */
 @ApiTags('admin')
 @ApiBearerAuth()
 @Roles('admin', 'super_admin')
@@ -41,7 +50,10 @@ export class AdminVehiclesController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Vehicle listings, newest first; filter by status or provider' })
+  @ApiOperation({
+    summary:
+      'Vehicle listings, newest first; filter by status, provider, category, place or free text',
+  })
   @ApiZodResponse(200, AdminVehicleListSchema)
   async list(
     @Query(new ZodValidationPipe(AdminVehicleListQuerySchema)) query: AdminVehicleListQuery,
@@ -62,19 +74,23 @@ export class AdminVehiclesController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Full listing with photos, provider, owner, pickup location and internal notes',
+    summary:
+      'Full listing with photos, provider, owner, pickup location, internal notes and the operations panel (searchability, documents, open bookings)',
   })
   @ApiZodResponse(200, AdminVehicleSchema)
   async get(@Param('id', IdPipe) id: string): Promise<AdminVehicle> {
     const d = await this.review.get(id);
-    return toAdminVehicle(
-      d.vehicle,
-      d.provider,
-      d.owner,
-      d.location,
-      d.locationVehicleCount,
-      await this.photos.listViews(id),
-    );
+    return {
+      ...toAdminVehicle(
+        d.vehicle,
+        d.provider,
+        d.owner,
+        d.location,
+        d.locationVehicleCount,
+        await this.photos.listViews(id),
+      ),
+      operations: await this.review.operations(d),
+    };
   }
 
   @Post(':id/start-review')
@@ -144,7 +160,10 @@ export class AdminVehiclesController {
 
   @Post(':id/suspend')
   @HttpCode(200)
-  @ApiOperation({ summary: 'approved | inactive → suspended (never available while suspended)' })
+  @ApiOperation({
+    summary:
+      'Pause: approved | inactive → suspended (never available while suspended; provider notified)',
+  })
   @ApiZodBody(SuspendVehicleRequestSchema)
   @ApiZodResponse(200, AdminVehicleSchema)
   async suspend(
@@ -159,7 +178,10 @@ export class AdminVehiclesController {
 
   @Post(':id/reactivate')
   @HttpCode(200)
-  @ApiOperation({ summary: 'suspended → approved' })
+  @ApiOperation({
+    summary:
+      'suspended → approved, only when the provider is active, the photo minimum is met and no required document has expired (409 otherwise)',
+  })
   @ApiZodBody(ReactivateVehicleRequestSchema)
   @ApiZodResponse(200, AdminVehicleSchema)
   async reactivate(
@@ -169,6 +191,44 @@ export class AdminVehiclesController {
     @Req() request: Request,
   ): Promise<AdminVehicle> {
     await this.review.reactivate(id, admin, body, requestMeta(request));
+    return this.get(id);
+  }
+
+  @Post(':id/category')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Correct the category to another existing, active one (reason required; audited; provider notified)',
+  })
+  @ApiZodBody(CorrectVehicleCategoryRequestSchema)
+  @ApiZodResponse(200, AdminVehicleSchema)
+  async correctCategory(
+    @Param('id', IdPipe) id: string,
+    @Body(new ZodValidationPipe(CorrectVehicleCategoryRequestSchema))
+    body: CorrectVehicleCategoryRequest,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<AdminVehicle> {
+    await this.review.correctCategory(id, admin, body, requestMeta(request));
+    return this.get(id);
+  }
+
+  @Post(':id/photos/:photoId/remove')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Remove a photo for policy reasons (reason required; audited; objects deleted; provider told if the listing drops below the searchable minimum)',
+  })
+  @ApiZodBody(RemoveVehiclePhotoRequestSchema)
+  @ApiZodResponse(200, AdminVehicleSchema)
+  async removePhoto(
+    @Param('id', IdPipe) id: string,
+    @Param('photoId', IdPipe) photoId: string,
+    @Body(new ZodValidationPipe(RemoveVehiclePhotoRequestSchema)) body: RemoveVehiclePhotoRequest,
+    @CurrentUser() admin: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<AdminVehicle> {
+    await this.review.removePhoto(id, photoId, admin, body, requestMeta(request));
     return this.get(id);
   }
 }

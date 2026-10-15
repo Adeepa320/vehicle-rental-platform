@@ -127,6 +127,20 @@
       "when": 1791883324312,
       "tag": "0017_reviews_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792070272430,
+      "tag": "0018_admin_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792070353063,
+      "tag": "0019_admin_operations_triggers",
+      "breakpoints": true
     }
   ]
 }

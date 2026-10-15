@@ -36,6 +36,7 @@ describe('booking state machine', () => {
       confirm: ['accepted'],
       cancel_by_customer: ['requested', 'accepted', 'confirmed'],
       cancel_by_provider: ['accepted', 'confirmed'],
+      cancel_by_platform: ['requested', 'accepted', 'confirmed'],
       pickup: ['confirmed'],
       return: ['active'],
       no_show: ['confirmed'],
@@ -65,7 +66,13 @@ describe('booking state machine', () => {
   it('creates the hold only on accept and releases it on expiry, cancellation and no-show', () => {
     expect(ACTIONS.filter((a) => BOOKING_TRANSITIONS[a].createsHold)).toEqual(['accept']);
     expect(ACTIONS.filter((a) => BOOKING_TRANSITIONS[a].releasesHold).sort()).toEqual(
-      ['cancel_by_customer', 'cancel_by_provider', 'expire_acceptance', 'no_show'].sort(),
+      [
+        'cancel_by_customer',
+        'cancel_by_provider',
+        'cancel_by_platform',
+        'expire_acceptance',
+        'no_show',
+      ].sort(),
     );
     expect(holdsVehicle('requested')).toBe(false);
     expect(holdsVehicle('accepted')).toBe(true);

@@ -101,6 +101,13 @@ export const PLATFORM_SETTINGS: NewPlatformSetting[] = [
   {
     key: 'auto_pause_on_document_expiry',
     value: true,
-    description: 'Automatically pause a vehicle when its revenue licence or insurance expires.',
+    description:
+      'Automatically pause (suspend) a vehicle when its approved revenue licence or insurance expires; an admin reactivates it after a new document is approved (Phase 9).',
+  },
+  {
+    key: 'dispute_window_days',
+    value: 14,
+    description:
+      'Days after completion, no-show or cancellation during which a booking participant may open a dispute (Phase 9, PRD FR-T4).',
   },
 ];

@@ -1,7 +1,7 @@
 import type {
   AdminProviderApplication,
   AdminProviderApplicationSummary,
-  AdminProviderDetail,
+  AdminProviderDetailBase,
   AdminProviderSummary,
   ProviderApplication as ProviderApplicationView,
   ProviderProfile as ProviderProfileView,
@@ -159,7 +159,7 @@ export function toAdminProviderDetail(
   row: ProviderProfile,
   relations: ProfileRelations,
   owner: Pick<User, 'id' | 'email' | 'fullName'>,
-): AdminProviderDetail {
+): AdminProviderDetailBase {
   return {
     ...toProviderProfile(row, relations),
     owner: { id: owner.id, email: owner.email, fullName: owner.fullName },

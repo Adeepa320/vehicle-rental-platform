@@ -25,6 +25,7 @@ import { AdminReviewService } from './admin-review.service';
 
 const IdPipe = new ZodValidationPipe(z.uuid());
 
+/** Approved providers: search, operational detail, suspend / reactivate (Phase 3 standing + Phase 9 panel). */
 @ApiTags('admin')
 @ApiBearerAuth()
 @Roles('admin', 'super_admin')
@@ -33,7 +34,9 @@ export class AdminProvidersController {
   constructor(private readonly review: AdminReviewService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List approved providers (active and suspended)' })
+  @ApiOperation({
+    summary: 'List approved providers (active and suspended); search by name, slug or owner',
+  })
   @ApiZodResponse(200, AdminProviderListSchema)
   async list(
     @Query(new ZodValidationPipe(AdminProviderListQuerySchema)) query: AdminProviderListQuery,
@@ -46,16 +49,25 @@ export class AdminProvidersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Provider profile with owner and application reference' })
+  @ApiOperation({
+    summary:
+      'Provider profile with owner, application reference and the operations panel (listings, bookings, metrics, documents, disputes)',
+  })
   @ApiZodResponse(200, AdminProviderDetailSchema)
   async get(@Param('id', IdPipe) id: string): Promise<AdminProviderDetail> {
     const { profile, relations, owner } = await this.review.getProvider(id);
-    return toAdminProviderDetail(profile, relations, owner);
+    return {
+      ...toAdminProviderDetail(profile, relations, owner),
+      operations: await this.review.operations(profile, owner),
+    };
   }
 
   @Post(':id/suspend')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Suspend an active provider (keeps the role; blocks provider actions)' })
+  @ApiOperation({
+    summary:
+      'Suspend an active provider (keeps the role; blocks provider actions and search; existing confirmed bookings are NOT cancelled — see operations.bookings)',
+  })
   @ApiZodBody(SuspendProviderRequestSchema)
   @ApiZodResponse(200, AdminProviderDetailSchema)
   async suspend(

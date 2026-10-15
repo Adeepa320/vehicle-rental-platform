@@ -16,6 +16,7 @@ import {
   estimateRental,
   type PublicPricing,
 } from '../discovery/public';
+import { DisputeStatusSchema } from '../disputes/status';
 import { PaginationQuerySchema } from '../providers/provider';
 import { VehicleHoldSchema } from '../vehicles/availability';
 
@@ -36,6 +37,8 @@ export const BookingStatusSchema = z.enum([
   'cancelled_by_customer',
   'cancelled_by_provider',
   'no_show',
+  /** Operational cancellation by the platform team (Phase 9); the paid advance is refunded in full. */
+  'cancelled_by_platform',
 ]);
 export type BookingStatus = z.infer<typeof BookingStatusSchema>;
 
@@ -54,6 +57,7 @@ export const TERMINAL_BOOKING_STATUSES: readonly BookingStatus[] = [
   'cancelled_by_customer',
   'cancelled_by_provider',
   'no_show',
+  'cancelled_by_platform',
 ];
 /** Statuses during which an exclusive `vehicle_holds` row exists for the booking. */
 export const HELD_BOOKING_STATUSES: readonly BookingStatus[] = [
@@ -401,9 +405,74 @@ export const AdminBookingListQuerySchema = PaginationQuerySchema.extend({
   status: BookingStatusSchema.optional(),
   providerId: z.uuid().optional(),
   customerId: z.uuid().optional(),
+  vehicleId: z.uuid().optional(),
   reference: z.string().trim().min(3).max(20).optional(),
+  /** Partial reference, customer name or customer e-mail (case-insensitive). */
+  q: z.string().trim().min(2).max(100).optional(),
+  /** Bookings whose rental period overlaps `[from, to]` (Colombo calendar days, inclusive). */
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
 });
 export type AdminBookingListQuery = z.infer<typeof AdminBookingListQuerySchema>;
+
+/** Who the admin cancels on behalf of; decides the status and the refund rule (USER_FLOWS §3.6). */
+export const AdminCancellationActorSchema = z.enum(['customer', 'provider', 'platform']);
+export type AdminCancellationActor = z.infer<typeof AdminCancellationActorSchema>;
+
+export const AdminCancelBookingRequestSchema = z.strictObject({
+  actor: AdminCancellationActorSchema,
+  /** Shown to both parties as the cancellation note and written to the audit trail. */
+  reason: z.string().trim().min(5).max(1000),
+  version: z.number().int().min(1),
+});
+export type AdminCancelBookingRequest = z.infer<typeof AdminCancelBookingRequestSchema>;
+
+/** `GET /admin/bookings/{id}/cancellation-preview?actor=`: what an admin cancellation would do, without doing it. */
+export const CancellationPreviewSchema = z.object({
+  actor: AdminCancellationActorSchema,
+  allowed: z.boolean(),
+  /** Why not, when `allowed` is false (e.g. the rental is active or already final). */
+  reason: z.string().nullable(),
+  resultingStatus: BookingStatusSchema.nullable(),
+  holdWillBeReleased: z.boolean(),
+  /** Whether a verified advance payment exists. */
+  advancePaid: z.boolean(),
+  advanceAmount: z.string(),
+  /** Amount that becomes refund-due (null when nothing was paid). */
+  refundDueAmount: z.string().nullable(),
+  forfeited: z.boolean(),
+  hoursBeforePickup: z.number(),
+  fullRefundHours: z.number(),
+});
+export type CancellationPreview = z.infer<typeof CancellationPreviewSchema>;
+
+/**
+ * Transactional e-mails an admin may send again (`POST /admin/bookings/{id}/resend`).
+ * The recipient, subject and body are derived server-side from the booking;
+ * nothing in the request can address or word the message.
+ */
+export const ResendTemplateSchema = z.enum([
+  'booking_confirmation',
+  'payment_reminder',
+  'pickup_reminder',
+  'cancellation_notice',
+  'review_request',
+]);
+export type ResendTemplate = z.infer<typeof ResendTemplateSchema>;
+
+export const ResendNotificationRequestSchema = z.strictObject({
+  template: ResendTemplateSchema,
+});
+export type ResendNotificationRequest = z.infer<typeof ResendNotificationRequestSchema>;
+
+export const ResendNotificationResponseSchema = z.object({
+  template: ResendTemplateSchema,
+  recipientRole: z.enum(['customer', 'provider']),
+  /** Masked address, e.g. `n***@example.com`. */
+  recipient: z.string(),
+  sentAt: z.iso.datetime(),
+});
+export type ResendNotificationResponse = z.infer<typeof ResendNotificationResponseSchema>;
 
 // ------------------------------------------------------------------- views
 
@@ -426,6 +495,8 @@ export const BookingProviderSummarySchema = z.object({
   slug: z.string(),
   displayName: z.string(),
   platformApproved: z.literal(true),
+  /** "Verified provider" (Phase 9): identity / business documents approved and in date. */
+  documentsVerified: z.boolean(),
 });
 export type BookingProviderSummary = z.infer<typeof BookingProviderSummarySchema>;
 
@@ -567,6 +638,12 @@ export const AdminBookingSchema = BookingSchema.extend({
   providerEmail: z.string(),
   hold: VehicleHoldSchema.nullable(),
   payments: z.array(AdminPaymentSchema),
+  /** The booking's dispute, if one was opened (Phase 9). */
+  dispute: z.object({ id: z.uuid(), status: DisputeStatusSchema }).nullable(),
+  /** The customer's review, if one exists (Phase 8). */
+  review: z.object({ id: z.uuid(), status: z.enum(['published', 'hidden']) }).nullable(),
+  /** Which resend templates make sense for the booking right now. */
+  resendableTemplates: z.array(ResendTemplateSchema),
 });
 export type AdminBooking = z.infer<typeof AdminBookingSchema>;
 

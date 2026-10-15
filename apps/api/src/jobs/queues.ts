@@ -9,12 +9,16 @@ export const QUEUES = {
   bookingsExpire: 'bookings.expire',
   /** Scheduled sweep that sends payment / pickup / review reminders (Phase 8). Payload: `{}`. */
   remindersSweep: 'reminders.sweep',
+  /** Daily sweep over approved documents: expiry reminders and the optional auto-pause (Phase 9). Payload: `{}`. */
+  documentsExpirySweep: 'documents.expiry-sweep',
 } as const;
 
 /** Cron (UTC) for the booking expiry sweep: every minute; the job itself is idempotent. */
 export const BOOKINGS_EXPIRE_CRON = '* * * * *';
 /** Cron (UTC) for the reminder sweep: every minute; every reminder is deduplicated at the database. */
 export const REMINDERS_SWEEP_CRON = '* * * * *';
+/** Cron (UTC) for the document expiry sweep: daily at 01:00 UTC (06:30 Colombo); idempotent through dedupe keys. */
+export const DOCUMENTS_EXPIRY_SWEEP_CRON = '0 1 * * *';
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
@@ -61,6 +65,16 @@ export const QUEUE_DEFINITIONS: readonly QueueDefinition[] = [
       retryBackoff: false,
       expireInSeconds: 120,
       retentionDays: 2,
+    },
+  },
+  {
+    name: QUEUES.documentsExpirySweep,
+    options: {
+      retryLimit: 2,
+      retryDelay: 60,
+      retryBackoff: false,
+      expireInSeconds: 300,
+      retentionDays: 7,
     },
   },
 ];

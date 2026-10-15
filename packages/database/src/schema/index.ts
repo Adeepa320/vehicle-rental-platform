@@ -14,3 +14,6 @@ export * from './bookings';
 export * from './payments';
 export * from './reviews';
 export * from './notifications';
+export * from './documents';
+export * from './disputes';
+export * from './search-logs';

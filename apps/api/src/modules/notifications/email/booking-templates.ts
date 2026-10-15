@@ -295,7 +295,8 @@ ${button(input.link, 'Open booking')}`,
 
 export function bookingCancelledEmail(
   input: BookingEmailBase & {
-    cancelledBy: 'customer' | 'provider';
+    /** `platform` = cancelled by the platform team on behalf of nobody (Phase 9 admin cancellation). */
+    cancelledBy: 'customer' | 'provider' | 'platform';
     counterpartName: string;
     note: string | null;
     /** For the customer when the provider cancels a paid booking: what happens to the advance. */
@@ -306,7 +307,9 @@ export function bookingCancelledEmail(
   const lead =
     input.cancelledBy === 'customer'
       ? `${input.counterpartName} cancelled this booking. The dates are available again.`
-      : `${input.counterpartName} cancelled this booking. We are sorry for the inconvenience.`;
+      : input.cancelledBy === 'platform'
+        ? `The ${APP_NAME} team cancelled this booking. We are sorry for the inconvenience; the reason is below.`
+        : `${input.counterpartName} cancelled this booking. We are sorry for the inconvenience.`;
   const refundNote = input.refundNote ?? null;
   const text = [
     `Hi ${input.fullName},`,

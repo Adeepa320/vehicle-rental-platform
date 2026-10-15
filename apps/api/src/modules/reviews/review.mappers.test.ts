@@ -37,7 +37,12 @@ function rowSet(overrides: Partial<ReviewRow> = {}): ReviewRowSet {
   };
   return {
     review,
-    customer: { id: CUSTOMER_ID, fullName: 'Nimal Perera', email: 'nimal@example.com' },
+    customer: {
+      id: CUSTOMER_ID,
+      fullName: 'Nimal Perera',
+      email: 'nimal@example.com',
+      status: 'active',
+    },
     vehicle: {
       id: review.vehicleId,
       slug: 'toyota-aqua-2018-mirissa-ab12',

@@ -17,6 +17,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
+import { DisputesModule } from './modules/disputes/disputes.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { EmailModule } from './modules/notifications/email/email.module';
@@ -72,6 +74,8 @@ import { UsersModule } from './modules/users/users.module';
     BookingsModule,
     PaymentsModule,
     ReviewsModule,
+    DocumentsModule,
+    DisputesModule,
     AdminModule,
   ],
   providers: [

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { AdminCancellationCard, ResendEmailCard } from '@/components/admin/admin-booking-actions';
 import { AdminNav } from '@/components/admin/admin-nav';
 import { AdminPaymentCard } from '@/components/admin/admin-payment-card';
 import { AuthCard, FormMessage } from '@/components/auth/form-primitives';
@@ -16,6 +17,7 @@ import {
   PriceCard,
   TimelineCard,
 } from '@/components/bookings/booking-parts';
+import { DISPUTE_STATUS } from '@/lib/admin-labels';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRequireAuth } from '@/lib/auth/use-require-auth';
 import { BOOKING_STATUS, formatDateTime } from '@/lib/booking-labels';
@@ -101,6 +103,31 @@ export default function AdminBookingPage() {
           {booking.customer.name}
         </p>
         <p className="text-sm">{BOOKING_STATUS[booking.status].provider}</p>
+        <p className="flex flex-wrap gap-3 text-sm">
+          {booking.dispute ? (
+            <Link
+              href={`/admin/disputes/${booking.dispute.id}`}
+              className="underline underline-offset-4"
+            >
+              Dispute: {DISPUTE_STATUS[booking.dispute.status].label}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">No dispute</span>
+          )}
+          {booking.review ? (
+            <Link href="/admin/reviews" className="underline underline-offset-4">
+              Review: {booking.review.status}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">No review</span>
+          )}
+          {booking.cancellationNote ? (
+            <span>
+              <span className="text-muted-foreground">Cancellation note:</span>{' '}
+              {booking.cancellationNote}
+            </span>
+          ) : null}
+        </p>
       </header>
 
       {booking.payments.some((p) => p.requiresManualResolution) ? (
@@ -160,6 +187,8 @@ export default function AdminBookingPage() {
             )}
           </AuthCard>
         </div>
+        <AdminCancellationCard booking={booking} onChanged={setBooking} />
+        <ResendEmailCard booking={booking} />
         <PickupCard booking={booking} />
         <DriverCard booking={booking} />
         <HandoverCard booking={booking} />

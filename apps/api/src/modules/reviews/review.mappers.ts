@@ -1,4 +1,5 @@
 import {
+  ANONYMISED_REVIEWER_NAME,
   reviewerDisplayName,
   type AdminReview,
   type CustomerReview,
@@ -13,7 +14,12 @@ import { vehicleTitleOf } from '../bookings/booking.persistence';
 /** One review with the rows the views need (loaded by `ReviewsService.rows`). */
 export interface ReviewRowSet {
   review: ReviewRow;
-  customer: { id: string; fullName: string; email: string };
+  customer: {
+    id: string;
+    fullName: string;
+    email: string;
+    status: 'active' | 'suspended' | 'deleted';
+  };
   vehicle: Vehicle;
   booking: { id: string; reference: string; completedAt: Date | null };
   provider: { id: string; displayName: string };
@@ -34,7 +40,13 @@ export function toPublicReview(row: ReviewRowSet): PublicReview {
     serviceRating: r.serviceRating,
     communicationRating: r.communicationRating,
     comment: r.comment,
-    reviewer: { displayName: reviewerDisplayName(row.customer.fullName) },
+    reviewer: {
+      // An anonymised account (Phase 9) never shows its placeholder name as "Deleted U.".
+      displayName:
+        row.customer.status === 'deleted'
+          ? ANONYMISED_REVIEWER_NAME
+          : reviewerDisplayName(row.customer.fullName),
+    },
     providerReply: r.providerReply,
     providerRepliedAt: r.providerRepliedAt ? r.providerRepliedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),

@@ -43,6 +43,11 @@ export function VehicleCard({ card, state, reference, highlighted }: VehicleCard
           <Link href={href} className="text-lg font-semibold underline-offset-4 hover:underline">
             {card.title}
           </Link>
+          {card.documentsVerified ? (
+            <Badge variant="default" className="ml-2 align-middle">
+              Verified vehicle
+            </Badge>
+          ) : null}
           <p className="text-muted-foreground text-sm">
             {card.make} {card.model} {card.modelYear} · {specs.join(' · ')}
           </p>
@@ -58,7 +63,9 @@ export function VehicleCard({ card, state, reference, highlighted }: VehicleCard
         </p>
         <p className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-medium">{card.provider.displayName}</span>
-          <Badge variant="secondary">Platform-approved provider</Badge>
+          <Badge variant={card.provider.documentsVerified ? 'default' : 'secondary'}>
+            {card.provider.documentsVerified ? 'Verified provider' : 'Platform-approved provider'}
+          </Badge>
           <RatingSummaryLine summary={card.rating} compact />
         </p>
         <div className="mt-auto flex flex-wrap items-end justify-between gap-2">

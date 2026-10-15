@@ -37,6 +37,7 @@ export const bookingStatus = pgEnum('booking_status', [
   'cancelled_by_customer',
   'cancelled_by_provider',
   'no_show',
+  'cancelled_by_platform',
 ]);
 export const declineReason = pgEnum('decline_reason', [
   'vehicle_unavailable',

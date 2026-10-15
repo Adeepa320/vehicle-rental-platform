@@ -4,6 +4,8 @@ import { Logger } from 'nestjs-pino';
 import { JobsService } from './jobs/jobs.service';
 import { BookingExpiryService } from './modules/bookings/booking-expiry.service';
 import { registerBookingJobs } from './modules/bookings/booking-expiry.worker';
+import { DocumentExpiryService } from './modules/documents/document-expiry.service';
+import { registerDocumentJobs } from './modules/documents/document-expiry.worker';
 import { EmailService } from './modules/notifications/email/email.service';
 import { registerEmailJobs } from './modules/notifications/email/email.worker';
 import { RemindersService } from './modules/notifications/reminders/reminders.service';
@@ -29,6 +31,7 @@ async function bootstrap(): Promise<void> {
   await registerEmailJobs(jobs, app.get(EmailService));
   await registerBookingJobs(jobs, app.get(BookingExpiryService));
   await registerReminderJobs(jobs, app.get(RemindersService));
+  await registerDocumentJobs(jobs, app.get(DocumentExpiryService));
   logger.log(`Worker ready; registered job handlers: ${jobs.registeredJobNames.join(', ')}`);
 }
 

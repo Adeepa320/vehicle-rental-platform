@@ -48,6 +48,12 @@ export const ApiErrorCodeSchema = z.enum([
   'ALREADY_REVIEWED',
   'ALREADY_REPLIED',
   'REVIEW_LOCKED_AFTER_REPLY',
+  // Phase 9 — admin operations
+  'ACCOUNT_ANONYMISATION_BLOCKED',
+  'DISPUTE_WINDOW_CLOSED',
+  'DISPUTE_ALREADY_EXISTS',
+  'SETTING_STALE',
+  'SETTING_MONEY_MODEL_UNSUPPORTED',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

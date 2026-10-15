@@ -1,6 +1,26 @@
 import {
   AdminBookingListSchema,
   AdminBookingSchema,
+  AdminDisputeListSchema,
+  AdminDisputeSchema,
+  AdminDistrictSchema,
+  AdminDocumentListSchema,
+  AdminDocumentSchema,
+  AdminOverviewSchema,
+  AdminPlaceSchema,
+  AdminSettingsResponseSchema,
+  AdminUserDetailSchema,
+  AdminUserListSchema,
+  AdminVehicleCategorySchema,
+  AuditEventListSchema,
+  BookingDisputeStateSchema,
+  CancellationPreviewSchema,
+  DisputeSchema,
+  ProviderDocumentListSchema,
+  ProviderDocumentSchema,
+  ProviderReportSchema,
+  ReportsOverviewSchema,
+  ResendNotificationResponseSchema,
   AdminPaymentListItemSchema,
   AdminPaymentListSchema,
   AdminReviewListSchema,
@@ -57,6 +77,56 @@ import {
   type AcceptBookingRequest,
   type AdminBooking,
   type AdminBookingList,
+  type AdminCancelBookingRequest,
+  type AdminCancellationActor,
+  type AdminDispute,
+  type AdminDisputeList,
+  type AdminDistrict,
+  type AdminDocument,
+  type AdminDocumentList,
+  type AdminOverview,
+  type AdminPlace,
+  type AdminSettingsResponse,
+  type AdminUserDetail,
+  type AdminUserList,
+  type AdminVehicleCategory,
+  type AnonymiseUserRequest,
+  type ApproveDocumentRequest,
+  type AuditEventList,
+  type BookingDisputeState,
+  type CancellationPreview,
+  type CorrectVehicleCategoryRequest,
+  type CreatePlaceRequest,
+  type DisputeInternalNoteRequest,
+  type DisputeMessageRequest,
+  type DisputeStatus,
+  type Dispute,
+  type DocumentEffectiveStatus,
+  type DocumentScope,
+  type OpenDisputeRequest,
+  type ProviderDocument,
+  type ProviderDocumentList,
+  type ProviderReport,
+  type ReactivateUserRequest,
+  type RejectDisputeRequest,
+  type RejectDocumentRequest,
+  type RemoveVehiclePhotoRequest,
+  type ReportCsvName,
+  type ReportQuery,
+  type ReportsOverview,
+  type RequestDocumentReplacementRequest,
+  type ResendNotificationResponse,
+  type ResendTemplate,
+  type ResolveDisputeRequest,
+  type StartDisputeReviewRequest,
+  type SuspendUserRequest,
+  type UpdateDistrictRequest,
+  type UpdatePlaceRequest,
+  type UpdateSettingsRequest,
+  type UpdateVehicleCategoryRequest,
+  type UploadDocumentFields,
+  type UserRole,
+  type UserStatus,
   type AdminPaymentList,
   type AdminPaymentListItem,
   type AdminReview,
@@ -186,17 +256,53 @@ export function createApiClient(options: ApiClientOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 10_000;
 
+  function buildUrl(path: string, query: QueryParams | undefined): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query ?? {})) {
+      if (value !== undefined && value !== '') params.set(key, String(value));
+    }
+    const queryString = params.toString();
+    return `${baseUrl}${path}${queryString ? `?${queryString}` : ''}`;
+  }
+
+  /** The API error envelope as a typed error, or a generic one when the body is not ours. */
+  function errorFor(path: string, status: number, body: unknown): ApiClientError {
+    const parsed = ApiErrorSchema.safeParse(body);
+    if (parsed.success) {
+      const { code, message, requestId, details } = parsed.data.error;
+      return new ApiClientError(status, code, message, requestId, details);
+    }
+    return new ApiClientError(
+      status,
+      'INTERNAL',
+      `Request to ${path} failed with status ${status}`,
+    );
+  }
+
+  /**
+   * Authenticated binary download (private documents, CSV exports). The caller
+   * turns the Blob into an object URL; nothing here is ever a shareable link.
+   */
+  async function fetchBlob(path: string, accessToken: string, query?: QueryParams): Promise<Blob> {
+    const response = await fetchImpl(buildUrl(path, query), {
+      method: 'GET',
+      headers: { authorization: `Bearer ${accessToken}` },
+      credentials: 'same-origin',
+      signal: AbortSignal.timeout(Math.max(timeoutMs, 60_000)),
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      throw errorFor(path, response.status, await response.json().catch(() => undefined));
+    }
+    return response.blob();
+  }
+
   async function request<T>(
     path: string,
     schema: ZodType<T>,
     opts: RequestOptions = {},
   ): Promise<T> {
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(opts.query ?? {})) {
-      if (value !== undefined && value !== '') params.set(key, String(value));
-    }
-    const queryString = params.toString();
-    const response = await fetchImpl(`${baseUrl}${path}${queryString ? `?${queryString}` : ''}`, {
+    const response = await fetchImpl(buildUrl(path, opts.query), {
       method: opts.method ?? 'GET',
       headers: {
         accept: 'application/json',
@@ -219,16 +325,7 @@ export function createApiClient(options: ApiClientOptions) {
       response.status === 204 ? undefined : await response.json().catch(() => undefined);
 
     if (!response.ok && !(opts.allowStatuses ?? []).includes(response.status)) {
-      const parsed = ApiErrorSchema.safeParse(body);
-      if (parsed.success) {
-        const { code, message, requestId, details } = parsed.data.error;
-        throw new ApiClientError(response.status, code, message, requestId, details);
-      }
-      throw new ApiClientError(
-        response.status,
-        'INTERNAL',
-        `Request to ${path} failed with status ${response.status}`,
-      );
+      throw errorFor(path, response.status, body);
     }
 
     const result = schema.safeParse(body);
@@ -254,6 +351,8 @@ export function createApiClient(options: ApiClientOptions) {
   };
 
   return {
+    /** Authenticated binary download; see `fetchBlob` above. */
+    fetchBlob,
     getHealth: (): Promise<HealthResponse> => request('/health', HealthResponseSchema),
     getReadiness: (): Promise<ReadyResponse> =>
       request('/ready', ReadyResponseSchema, { allowStatuses: [503] }),
@@ -534,6 +633,63 @@ export function createApiClient(options: ApiClientOptions) {
         request('/providers/me/metrics', ProviderMetricsSchema, withToken(accessToken)),
     },
 
+    /** Participant side of disputes (the customer or the provider of the booking). */
+    disputes: {
+      /** Eligibility plus the existing dispute, if any. */
+      bookingState: (accessToken: string, bookingId: string): Promise<BookingDisputeState> =>
+        request(
+          `/bookings/${bookingId}/dispute`,
+          BookingDisputeStateSchema,
+          withToken(accessToken),
+        ),
+      open: (accessToken: string, bookingId: string, body: OpenDisputeRequest): Promise<Dispute> =>
+        request(`/bookings/${bookingId}/dispute`, DisputeSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      get: (accessToken: string, id: string): Promise<Dispute> =>
+        request(`/disputes/${id}`, DisputeSchema, withToken(accessToken)),
+      message: (accessToken: string, id: string, body: DisputeMessageRequest): Promise<Dispute> =>
+        request(`/disputes/${id}/messages`, DisputeSchema, { method: 'POST', body, accessToken }),
+    },
+
+    /** Private verification documents of the caller's provider profile and vehicles. */
+    providerDocuments: {
+      list: (
+        accessToken: string,
+        query: { vehicleId?: string; includeHistory?: boolean } = {},
+      ): Promise<ProviderDocumentList> =>
+        request('/providers/me/documents', ProviderDocumentListSchema, {
+          accessToken,
+          query: {
+            vehicleId: query.vehicleId,
+            includeHistory:
+              query.includeHistory === undefined ? undefined : String(query.includeHistory),
+          },
+        }),
+      /** Multipart upload; the bytes are sniffed server-side, so the declared type is irrelevant. */
+      upload: (
+        accessToken: string,
+        file: File,
+        fields: UploadDocumentFields,
+      ): Promise<ProviderDocument> => {
+        const formData = new FormData();
+        formData.append('file', file, file.name);
+        for (const [key, value] of Object.entries(fields)) {
+          if (value !== undefined && value !== '') formData.append(key, String(value));
+        }
+        return request('/providers/me/documents', ProviderDocumentSchema, {
+          method: 'POST',
+          formData,
+          accessToken,
+        });
+      },
+      /** The file itself, streamed with the bearer token (never a shareable URL). */
+      content: (accessToken: string, id: string): Promise<Blob> =>
+        fetchBlob(`/providers/me/documents/${id}/content`, accessToken),
+    },
+
     /** Reviews of the caller's own vehicles and the one-time reply. */
     providerReviews: {
       list: (
@@ -677,6 +833,58 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     admin: {
+      /** Operations home: counts of things that need a human, each with its queue path. */
+      overview: (accessToken: string): Promise<AdminOverview> =>
+        request('/admin/overview', AdminOverviewSchema, withToken(accessToken)),
+
+      /** User management (safe projections only; never auth-table data). */
+      listUsers: (
+        accessToken: string,
+        query: {
+          q?: string;
+          status?: UserStatus;
+          role?: UserRole;
+          createdFrom?: string;
+          createdTo?: string;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<AdminUserList> =>
+        request('/admin/users', AdminUserListSchema, { accessToken, query }),
+      getUser: (accessToken: string, id: string): Promise<AdminUserDetail> =>
+        request(`/admin/users/${id}`, AdminUserDetailSchema, withToken(accessToken)),
+      suspendUser: (
+        accessToken: string,
+        id: string,
+        body: SuspendUserRequest,
+      ): Promise<AdminUserDetail> =>
+        request(`/admin/users/${id}/suspend`, AdminUserDetailSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      reactivateUser: (
+        accessToken: string,
+        id: string,
+        body: ReactivateUserRequest = {},
+      ): Promise<AdminUserDetail> =>
+        request(`/admin/users/${id}/reactivate`, AdminUserDetailSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** Irreversible; the API refuses it with `ACCOUNT_ANONYMISATION_BLOCKED` while blockers exist. */
+      anonymiseUser: (
+        accessToken: string,
+        id: string,
+        body: AnonymiseUserRequest,
+      ): Promise<AdminUserDetail> =>
+        request(`/admin/users/${id}/anonymise`, AdminUserDetailSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+
       listApplications: (
         accessToken: string,
         query: { status?: ProviderApplicationStatus; cursor?: string; limit?: number } = {},
@@ -733,7 +941,7 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       listProviders: (
         accessToken: string,
-        query: { status?: ProviderStatus; cursor?: string; limit?: number } = {},
+        query: { status?: ProviderStatus; q?: string; cursor?: string; limit?: number } = {},
       ): Promise<AdminProviderList> =>
         request('/admin/providers', AdminProviderListSchema, { accessToken, query }),
       getProvider: (accessToken: string, id: string): Promise<AdminProviderDetail> =>
@@ -764,6 +972,9 @@ export function createApiClient(options: ApiClientOptions) {
         query: {
           status?: VehicleStatus;
           providerId?: string;
+          categoryId?: string;
+          placeId?: string;
+          q?: string;
           cursor?: string;
           limit?: number;
         } = {},
@@ -771,6 +982,28 @@ export function createApiClient(options: ApiClientOptions) {
         request('/admin/vehicles', AdminVehicleListSchema, { accessToken, query }),
       getVehicle: (accessToken: string, id: string): Promise<AdminVehicle> =>
         request(`/admin/vehicles/${id}`, AdminVehicleSchema, withToken(accessToken)),
+      /** Moves a listing to another existing, active category (audited). */
+      correctVehicleCategory: (
+        accessToken: string,
+        id: string,
+        body: CorrectVehicleCategoryRequest,
+      ): Promise<AdminVehicle> =>
+        request(`/admin/vehicles/${id}/category`, AdminVehicleSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      removeVehiclePhoto: (
+        accessToken: string,
+        id: string,
+        photoId: string,
+        body: RemoveVehiclePhotoRequest,
+      ): Promise<AdminVehicle> =>
+        request(`/admin/vehicles/${id}/photos/${photoId}/remove`, AdminVehicleSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
       vehicleAction: (
         accessToken: string,
         id: string,
@@ -792,7 +1025,11 @@ export function createApiClient(options: ApiClientOptions) {
           status?: BookingStatus;
           providerId?: string;
           customerId?: string;
+          vehicleId?: string;
           reference?: string;
+          q?: string;
+          from?: string;
+          to?: string;
           cursor?: string;
           limit?: number;
         } = {},
@@ -800,6 +1037,37 @@ export function createApiClient(options: ApiClientOptions) {
         request('/admin/bookings', AdminBookingListSchema, { accessToken, query }),
       getBooking: (accessToken: string, id: string): Promise<AdminBooking> =>
         request(`/admin/bookings/${id}`, AdminBookingSchema, withToken(accessToken)),
+      /** What an admin cancellation on behalf of `actor` would do, without doing it. */
+      cancellationPreview: (
+        accessToken: string,
+        id: string,
+        actor: AdminCancellationActor,
+      ): Promise<CancellationPreview> =>
+        request(`/admin/bookings/${id}/cancellation-preview`, CancellationPreviewSchema, {
+          accessToken,
+          query: { actor },
+        }),
+      cancelBooking: (
+        accessToken: string,
+        id: string,
+        body: AdminCancelBookingRequest,
+      ): Promise<AdminBooking> =>
+        request(`/admin/bookings/${id}/cancel`, AdminBookingSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** Sends one of the booking's transactional e-mails again (recipient and wording are server-side). */
+      resendNotification: (
+        accessToken: string,
+        id: string,
+        template: ResendTemplate,
+      ): Promise<ResendNotificationResponse> =>
+        request(`/admin/bookings/${id}/resend`, ResendNotificationResponseSchema, {
+          method: 'POST',
+          body: { template },
+          accessToken,
+        }),
 
       /** Payments flagged for manual resolution. */
       listPayments: (
@@ -864,6 +1132,205 @@ export function createApiClient(options: ApiClientOptions) {
           body,
           accessToken,
         }),
+
+      /** Document verification queue. */
+      listDocuments: (
+        accessToken: string,
+        query: {
+          status?: DocumentEffectiveStatus;
+          scope?: DocumentScope;
+          providerId?: string;
+          vehicleId?: string;
+          expiringWithinDays?: number;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<AdminDocumentList> =>
+        request('/admin/documents', AdminDocumentListSchema, { accessToken, query }),
+      getDocument: (accessToken: string, id: string): Promise<AdminDocument> =>
+        request(`/admin/documents/${id}`, AdminDocumentSchema, withToken(accessToken)),
+      /** The file itself (audited server-side); open it from a Blob URL, never a plain link. */
+      documentContent: (accessToken: string, id: string): Promise<Blob> =>
+        fetchBlob(`/admin/documents/${id}/content`, accessToken),
+      approveDocument: (
+        accessToken: string,
+        id: string,
+        body: ApproveDocumentRequest = {},
+      ): Promise<AdminDocument> =>
+        request(`/admin/documents/${id}/approve`, AdminDocumentSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      rejectDocument: (
+        accessToken: string,
+        id: string,
+        body: RejectDocumentRequest,
+      ): Promise<AdminDocument> =>
+        request(`/admin/documents/${id}/reject`, AdminDocumentSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      requestDocumentReplacement: (
+        accessToken: string,
+        id: string,
+        body: RequestDocumentReplacementRequest,
+      ): Promise<AdminDocument> =>
+        request(`/admin/documents/${id}/request-replacement`, AdminDocumentSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+
+      /** Dispute handling. Nothing here moves money. */
+      listDisputes: (
+        accessToken: string,
+        query: { status?: DisputeStatus; bookingId?: string; cursor?: string; limit?: number } = {},
+      ): Promise<AdminDisputeList> =>
+        request('/admin/disputes', AdminDisputeListSchema, { accessToken, query }),
+      getDispute: (accessToken: string, id: string): Promise<AdminDispute> =>
+        request(`/admin/disputes/${id}`, AdminDisputeSchema, withToken(accessToken)),
+      startDisputeReview: (
+        accessToken: string,
+        id: string,
+        body: StartDisputeReviewRequest = {},
+      ): Promise<AdminDispute> =>
+        request(`/admin/disputes/${id}/start-review`, AdminDisputeSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** Public message to both participants. */
+      postDisputeMessage: (
+        accessToken: string,
+        id: string,
+        body: DisputeMessageRequest,
+      ): Promise<AdminDispute> =>
+        request(`/admin/disputes/${id}/messages`, AdminDisputeSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** Internal note: never shown to participants. */
+      setDisputeInternalNote: (
+        accessToken: string,
+        id: string,
+        body: DisputeInternalNoteRequest,
+      ): Promise<AdminDispute> =>
+        request(`/admin/disputes/${id}/internal-note`, AdminDisputeSchema, {
+          method: 'PUT',
+          body,
+          accessToken,
+        }),
+      resolveDispute: (
+        accessToken: string,
+        id: string,
+        body: ResolveDisputeRequest,
+      ): Promise<AdminDispute> =>
+        request(`/admin/disputes/${id}/resolve`, AdminDisputeSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      rejectDispute: (
+        accessToken: string,
+        id: string,
+        body: RejectDisputeRequest,
+      ): Promise<AdminDispute> =>
+        request(`/admin/disputes/${id}/reject`, AdminDisputeSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+
+      /** Typed platform settings (read: admin; write: super admin). */
+      getSettings: (accessToken: string): Promise<AdminSettingsResponse> =>
+        request('/admin/settings', AdminSettingsResponseSchema, withToken(accessToken)),
+      updateSettings: (
+        accessToken: string,
+        body: UpdateSettingsRequest,
+      ): Promise<AdminSettingsResponse> =>
+        request('/admin/settings', AdminSettingsResponseSchema, {
+          method: 'PUT',
+          body,
+          accessToken,
+        }),
+
+      /** Reference data (writes: super admin; nothing is ever hard deleted). */
+      listDistricts: (accessToken: string): Promise<AdminDistrict[]> =>
+        request('/admin/districts', z.array(AdminDistrictSchema), withToken(accessToken)),
+      updateDistrict: (
+        accessToken: string,
+        id: string,
+        body: UpdateDistrictRequest,
+      ): Promise<AdminDistrict> =>
+        request(`/admin/districts/${id}`, AdminDistrictSchema, {
+          method: 'PATCH',
+          body,
+          accessToken,
+        }),
+      listPlaces: (
+        accessToken: string,
+        query: { districtId?: string; q?: string; includeInactive?: boolean } = {},
+      ): Promise<AdminPlace[]> =>
+        request('/admin/places', z.array(AdminPlaceSchema), {
+          accessToken,
+          query: {
+            districtId: query.districtId,
+            q: query.q,
+            includeInactive:
+              query.includeInactive === undefined ? undefined : String(query.includeInactive),
+          },
+        }),
+      createPlace: (accessToken: string, body: CreatePlaceRequest): Promise<AdminPlace> =>
+        request('/admin/places', AdminPlaceSchema, { method: 'POST', body, accessToken }),
+      updatePlace: (
+        accessToken: string,
+        id: string,
+        body: UpdatePlaceRequest,
+      ): Promise<AdminPlace> =>
+        request(`/admin/places/${id}`, AdminPlaceSchema, { method: 'PATCH', body, accessToken }),
+      listVehicleCategories: (accessToken: string): Promise<AdminVehicleCategory[]> =>
+        request(
+          '/admin/vehicle-categories',
+          z.array(AdminVehicleCategorySchema),
+          withToken(accessToken),
+        ),
+      updateVehicleCategory: (
+        accessToken: string,
+        id: string,
+        body: UpdateVehicleCategoryRequest,
+      ): Promise<AdminVehicleCategory> =>
+        request(`/admin/vehicle-categories/${id}`, AdminVehicleCategorySchema, {
+          method: 'PATCH',
+          body,
+          accessToken,
+        }),
+
+      /** Read-only audit trail. */
+      listAuditEvents: (
+        accessToken: string,
+        query: {
+          actorUserId?: string;
+          action?: string;
+          targetType?: string;
+          targetId?: string;
+          from?: string;
+          to?: string;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<AuditEventList> =>
+        request('/admin/audit-events', AuditEventListSchema, { accessToken, query }),
+
+      /** Operational reports computed on read; CSVs are the only exports. */
+      reportsOverview: (accessToken: string, query: ReportQuery): Promise<ReportsOverview> =>
+        request('/admin/reports/overview', ReportsOverviewSchema, { accessToken, query }),
+      reportsProviders: (accessToken: string): Promise<ProviderReport> =>
+        request('/admin/reports/providers', ProviderReportSchema, withToken(accessToken)),
+      reportCsv: (accessToken: string, name: ReportCsvName, query?: ReportQuery): Promise<Blob> =>
+        fetchBlob(`/admin/reports/${name}.csv`, accessToken, query),
     },
   };
 }

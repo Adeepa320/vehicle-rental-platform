@@ -1,21 +1,36 @@
 'use client';
 
-import { formatLkr, type AdminVehicle } from '@vrp/contracts';
+import {
+  PROTECTED_CATEGORY_REASON,
+  PROTECTED_INACTIVE_CATEGORY_IDS,
+  formatLkr,
+  type AdminVehicle,
+} from '@vrp/contracts';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { AdminNav } from '@/components/admin/admin-nav';
+import { selectClass } from '@/components/admin/admin-shell';
 import { ReasonAction } from '@/components/admin/reason-action';
 import { Photo } from '@/components/public/photo';
-import { AuthCard, FormMessage } from '@/components/auth/form-primitives';
+import { AuthCard, FormField, FormMessage } from '@/components/auth/form-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { DOCUMENT_TYPE_LABEL } from '@/lib/admin-labels';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRequireAuth } from '@/lib/auth/use-require-auth';
+import { formatDateTime } from '@/lib/booking-labels';
 import { submitErrorFrom } from '@/lib/forms';
 import { formatDate } from '@/lib/provider-labels';
-import { categoryName, districtName, placeName, useReferenceData } from '@/lib/reference';
+import {
+  categoryName,
+  districtName,
+  placeName,
+  useReferenceData,
+  type ReferenceData,
+} from '@/lib/reference';
 import {
   FUEL_LABEL,
   FUEL_POLICY_LABEL,
@@ -158,15 +173,40 @@ export default function AdminVehicleDetailPage() {
         </div>
         <p className="text-muted-foreground text-sm">
           Provider{' '}
-          <span className="text-foreground font-medium">{vehicle.provider.displayName}</span> (
-          {vehicle.provider.status}) · {vehicle.provider.owner.fullName} ·{' '}
+          <Link
+            href={`/admin/providers/${vehicle.provider.id}`}
+            className="text-foreground font-medium underline underline-offset-4"
+          >
+            {vehicle.provider.displayName}
+          </Link>{' '}
+          ({vehicle.provider.status}) · {vehicle.provider.owner.fullName} ·{' '}
           {vehicle.provider.owner.email}
         </p>
         <p className="text-muted-foreground text-xs">
           Submitted {formatDate(vehicle.submittedAt)} · Review started{' '}
           {formatDate(vehicle.reviewStartedAt)} · Last decision {formatDate(vehicle.reviewedAt)}
         </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={`/admin/documents?vehicleId=${vehicle.id}`} />}
+          >
+            Documents
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={`/admin/bookings?vehicleId=${vehicle.id}`} />}
+          >
+            Bookings
+          </Button>
+        </div>
       </header>
+
+      <OperationsCard vehicle={vehicle} />
 
       {vehicle.reviewReason ? (
         <FormMessage variant="destructive" title="Last message to the provider">
@@ -193,7 +233,7 @@ export default function AdminVehicleDetailPage() {
 
       <AuthCard
         title={`Photos (${vehicle.photos.length})`}
-        description="Exactly what customers will see; metadata is stripped at upload."
+        description="Exactly what customers will see; metadata is stripped at upload. Removing a photo is audited and the provider is told why."
       >
         {vehicle.photos.length === 0 ? (
           <p className="text-muted-foreground text-sm">No photos uploaded.</p>
@@ -210,10 +250,44 @@ export default function AdminVehicleDetailPage() {
                   {photo.isPrimary ? 'Primary · ' : ''}
                   {photo.width}×{photo.height}
                 </span>
+                <ReasonAction
+                  label="Remove"
+                  confirmLabel="Remove photo"
+                  variant="destructive"
+                  placeholder="Reason (shown to the provider, 5–500 characters)"
+                  onConfirm={(reason) =>
+                    run(() =>
+                      withAccessToken((t) =>
+                        api.admin.removeVehiclePhoto(t, vehicle.id, photo.id, { reason }),
+                      ),
+                    )
+                  }
+                />
               </li>
             ))}
           </ul>
         )}
+      </AuthCard>
+
+      <AuthCard
+        title="Category"
+        description="Move a mis-categorised listing to another active category. The provider is told the reason; pricing and documents are unchanged."
+      >
+        <p className="mb-3 text-sm">
+          Currently <span className="font-medium">{categoryName(ref, vehicle.categoryId)}</span>.
+        </p>
+        <CorrectCategoryForm
+          vehicle={vehicle}
+          reference={ref}
+          busy={busy}
+          onSubmit={(categoryId, reason) =>
+            run(() =>
+              withAccessToken((t) =>
+                api.admin.correctVehicleCategory(t, vehicle.id, { categoryId, reason }),
+              ),
+            )
+          }
+        />
       </AuthCard>
 
       <AuthCard title="Vehicle">
@@ -326,6 +400,110 @@ export default function AdminVehicleDetailPage() {
         </div>
       </AuthCard>
     </Shell>
+  );
+}
+
+function OperationsCard({ vehicle }: { vehicle: AdminVehicle }) {
+  const ops = vehicle.operations;
+  const docs = ops.documents;
+  const list = (types: readonly (keyof typeof DOCUMENT_TYPE_LABEL)[]) =>
+    types.length === 0 ? 'none' : types.map((t) => DOCUMENT_TYPE_LABEL[t]).join(', ');
+  return (
+    <AuthCard
+      title="Operations"
+      description="Why the listing is (not) visible to customers right now."
+    >
+      <Rows
+        rows={[
+          [
+            'Publicly searchable',
+            ops.publiclySearchable
+              ? 'Yes'
+              : `No — ${ops.searchabilityIssues.join('; ') || 'see status'}`,
+          ],
+          ['Photos', `${ops.photoCount} of at least ${ops.minimumPhotos} required`],
+          [
+            'Documents',
+            docs.verified
+              ? 'Verified vehicle: registration, revenue licence and insurance approved and in date'
+              : `Not verified · missing: ${list(docs.missing)} · expired: ${list(docs.expired)} · pending: ${list(docs.pending)}`,
+          ],
+          ['Open bookings', String(ops.openBookings)],
+          [
+            'Auto-paused',
+            ops.autoPausedAt
+              ? `${formatDateTime(ops.autoPausedAt)} by the document-expiry sweep`
+              : 'No',
+          ],
+          ['Suspension reason', ops.suspensionReason ?? '—'],
+        ]}
+      />
+    </AuthCard>
+  );
+}
+
+function CorrectCategoryForm({
+  vehicle,
+  reference,
+  busy,
+  onSubmit,
+}: {
+  vehicle: AdminVehicle;
+  reference: ReferenceData | undefined;
+  busy: boolean;
+  onSubmit: (categoryId: string, reason: string) => Promise<void>;
+}) {
+  const [categoryId, setCategoryId] = useState('');
+  const [reason, setReason] = useState('');
+  const options = (reference?.categories ?? []).filter((c) => c.id !== vehicle.categoryId);
+  const valid = categoryId !== '' && reason.trim().length >= 5;
+  return (
+    <form
+      className="grid gap-3"
+      noValidate
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!valid) return;
+        await onSubmit(categoryId, reason.trim());
+        setCategoryId('');
+        setReason('');
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FormField id="new-category" label="New category (active categories only)">
+          <select
+            id="new-category"
+            className={`${selectClass} w-full`}
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+          >
+            <option value="">Choose…</option>
+            {options.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField id="category-reason" label="Reason (shown to the provider)">
+          <Textarea
+            id="category-reason"
+            className="min-h-9"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </FormField>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {PROTECTED_INACTIVE_CATEGORY_IDS.join(' and ')} are intentionally inactive and cannot be
+        chosen: {PROTECTED_CATEGORY_REASON}
+      </p>
+      <div>
+        <Button type="submit" size="sm" variant="outline" disabled={busy || !valid}>
+          Move to this category
+        </Button>
+      </div>
+    </form>
   );
 }
 

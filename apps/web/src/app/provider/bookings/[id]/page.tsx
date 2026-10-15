@@ -24,6 +24,7 @@ import {
 } from '@/components/bookings/booking-parts';
 import { HandoverForm } from '@/components/bookings/handover-form';
 import { PaymentStateLine } from '@/components/bookings/payment-parts';
+import { DisputeCta } from '@/components/disputes/booking-dispute';
 import { ProviderNav } from '@/components/provider/provider-nav';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -265,6 +266,7 @@ export default function ProviderBookingPage() {
           {can('reveal_contact') ? <ContactReveal bookingId={booking.id} party="customer" /> : null}
         </AuthCard>
         <HandoverCard booking={booking} />
+        <DisputeCta booking={booking} href={`/provider/bookings/${booking.id}/dispute`} />
       </div>
       <TimelineCard events={booking.events} />
     </main>

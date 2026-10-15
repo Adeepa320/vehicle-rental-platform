@@ -252,6 +252,8 @@ export type AdminProviderSummary = z.infer<typeof AdminProviderSummarySchema>;
 
 export const AdminProviderListQuerySchema = PaginationQuerySchema.extend({
   status: ProviderStatusSchema.optional(),
+  /** Display name, slug, owner name or owner e-mail (case-insensitive, partial). */
+  q: z.string().trim().min(2).max(100).optional(),
 });
 export type AdminProviderListQuery = z.infer<typeof AdminProviderListQuerySchema>;
 
@@ -261,9 +263,10 @@ export const AdminProviderListSchema = z.object({
 });
 export type AdminProviderList = z.infer<typeof AdminProviderListSchema>;
 
-export const AdminProviderDetailSchema = ProviderProfileSchema.extend({
+/** Base admin detail; `AdminProviderDetailSchema` (admin/providers.ts) adds the operational panel. */
+export const AdminProviderDetailBaseSchema = ProviderProfileSchema.extend({
   owner: z.object({ id: z.uuid(), email: z.email(), fullName: z.string() }),
   applicationId: z.uuid(),
   approvedBy: z.uuid().nullable(),
 });
-export type AdminProviderDetail = z.infer<typeof AdminProviderDetailSchema>;
+export type AdminProviderDetailBase = z.infer<typeof AdminProviderDetailBaseSchema>;

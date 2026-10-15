@@ -34,6 +34,9 @@ export interface PublicRow {
   /** Published-review aggregate of the vehicle (Phase 8), computed in SQL. */
   ratingAverage: string | null;
   ratingCount: number;
+  /** Required documents approved and in date (Phase 9), computed in SQL. */
+  vehicleDocumentsVerified: boolean;
+  providerDocumentsVerified: boolean;
 }
 
 export interface SearchWindow {
@@ -109,6 +112,7 @@ export function toCard(
       slug: row.provider.slug,
       displayName: row.provider.displayName,
       platformApproved: true,
+      documentsVerified: row.providerDocumentsVerified,
     },
     place: toPublicPlace(row),
     approxPoint: approxPointOf(row.location.geom, row.place.geom),
@@ -125,6 +129,7 @@ export function toCard(
         )
       : null,
     rating: toRating(row),
+    documentsVerified: row.vehicleDocumentsVerified,
   };
 }
 
@@ -165,12 +170,14 @@ export function toProviderSummary(
   primaryPlace: { slug: string; name: string },
   vehicleCount: number,
   metrics: ProviderMetrics,
+  documentsVerified: boolean,
 ): PublicProviderSummary {
   return {
     id: profile.id,
     slug: profile.slug,
     displayName: profile.displayName,
     platformApproved: true,
+    documentsVerified,
     description: profile.description,
     yearsOperating: profile.yearsOperating,
     approvedSince: profile.approvedAt.toISOString().slice(0, 7),

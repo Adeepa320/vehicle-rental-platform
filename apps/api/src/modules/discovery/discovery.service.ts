@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  DEFAULT_SEARCH_RADIUS_KM,
   rentalDays,
   type PlaceSuggestion,
   type PublicAvailability,
@@ -17,6 +16,7 @@ import {
   places,
   providerLocations,
   providerProfiles,
+  searchLogs,
   vehicleCategories,
   vehicleHolds,
   vehicles,
@@ -24,9 +24,16 @@ import {
   type GeoPoint,
 } from '@vrp/database';
 import { and, asc, desc, eq, gte, ilike, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { PinoLogger } from 'nestjs-pino';
 
+import { colomboDay } from '../../common/colombo-dates';
 import { ApiException } from '../../common/errors/api.exception';
 import { DATABASE } from '../../database/database.module';
+import { BookingSettingsService } from '../bookings/booking-settings.service';
+import {
+  providerDocumentsVerifiedSql,
+  vehicleDocumentsVerifiedSql,
+} from '../documents/document.verification';
 import { ProviderMetricsService } from '../providers/provider-metrics.service';
 import { ratingAverageSql, ratingCountSql } from '../reviews/rating.aggregates';
 import { VehiclePhotosService } from '../catalogue/vehicle-photos.service';
@@ -88,7 +95,11 @@ export class DiscoveryService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly photos: VehiclePhotosService,
     private readonly providerMetrics: ProviderMetricsService,
-  ) {}
+    private readonly settings: BookingSettingsService,
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(DiscoveryService.name);
+  }
 
   async search(query: VehicleSearchQuery): Promise<VehicleSearchResponse> {
     const place = query.placeId ? await this.loadPlace(query.placeId) : null;
@@ -98,8 +109,13 @@ export class DiscoveryService {
       ]);
     }
     const centre = place ? this.centreOf(place.geom) : null;
+    // Radius defaults and bounds are platform settings since Phase 9 (seeded 15 / 50 km).
+    const settings = await this.settings.get();
     const radiusM = Math.round(
-      (query.radiusKm ?? place?.defaultRadiusKm ?? DEFAULT_SEARCH_RADIUS_KM) * 1000,
+      Math.min(
+        query.radiusKm ?? place?.defaultRadiusKm ?? settings.defaultSearchRadiusKm,
+        settings.maxSearchRadiusKm,
+      ) * 1000,
     );
     const window: SearchWindow | null =
       query.startsAt && query.endsAt
@@ -188,6 +204,8 @@ export class DiscoveryService {
             }),
           })
         : null;
+
+    if (!query.cursor) await this.logSearch(query, place, window, page.length);
 
     const photosByVehicle = await this.photos.listActiveFor(page.map((r) => r.vehicle.id));
     const data = page.map((row) => {
@@ -282,9 +300,54 @@ export class DiscoveryService {
     return toDetail(
       row,
       photoRows.map((p) => toPublicPhoto(p, this.photos.variantUrls(p.publicPrefix))),
-      toProviderSummary(providerRow.profile, providerRow.place, vehicleCount, metrics),
+      toProviderSummary(
+        providerRow.profile,
+        providerRow.place,
+        vehicleCount,
+        metrics,
+        row.providerDocumentsVerified,
+      ),
       availability,
     );
+  }
+
+  /**
+   * Privacy-safe demand log (Phase 9, TECH_DECISIONS D64): the normalised
+   * criteria and the first-page result count, never who searched or from
+   * where. Best effort: a failed insert is logged and the search still answers.
+   */
+  private async logSearch(
+    query: VehicleSearchQuery,
+    place: { id: string; districtId: string } | null,
+    window: SearchWindow | null,
+    resultCount: number,
+  ): Promise<void> {
+    try {
+      await this.db.insert(searchLogs).values({
+        placeId: place?.id ?? null,
+        districtId: query.districtId ?? place?.districtId ?? null,
+        categoryId: query.categoryId ?? null,
+        startsOn: window ? colomboDay(new Date(window.startsAt)) : null,
+        endsOn: window ? colomboDay(new Date(window.endsAt)) : null,
+        filters: {
+          transmission: query.transmission ?? null,
+          fuelType: query.fuelType ?? null,
+          minSeats: query.minSeats ?? null,
+          hasAc: query.hasAc ?? null,
+          deliveryAvailable: query.deliveryAvailable ?? null,
+          minDailyRate: query.minDailyRate ?? null,
+          maxDailyRate: query.maxDailyRate ?? null,
+          radiusKm: query.radiusKm ?? null,
+          sort: query.sort,
+        },
+        resultCount,
+      });
+    } catch (error) {
+      this.logger.warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'Search log insert failed; the search was answered anyway',
+      );
+    }
   }
 
   async suggestPlaces(q: string, limit: number): Promise<PlaceSuggestion[]> {
@@ -344,6 +407,11 @@ export class DiscoveryService {
           slug: providerProfiles.slug,
           displayName: providerProfiles.displayName,
         },
+        vehicleDocumentsVerified: vehicleDocumentsVerifiedSql(sql`${vehicles.id}`),
+        providerDocumentsVerified: providerDocumentsVerifiedSql(
+          sql`${providerProfiles.id}`,
+          sql`${providerProfiles.providerType}`,
+        ),
         location: { geom: providerLocations.geom, placeId: providerLocations.placeId },
         place: {
           id: places.id,

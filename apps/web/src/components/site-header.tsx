@@ -45,7 +45,7 @@ export function SiteHeader() {
                 variant="ghost"
                 size="sm"
                 nativeButton={false}
-                render={<Link href="/admin/providers" />}
+                render={<Link href="/admin" />}
               >
                 Admin
               </Button>

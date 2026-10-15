@@ -38,7 +38,10 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   const { slug } = await params;
   const vehicle = await loadVehicle(slug).catch(() => null);
   if (!vehicle) return { title: 'Vehicle not found' };
-  const description = `${vehicle.make} ${vehicle.model} ${vehicle.modelYear} for rent in ${vehicle.place.name}, ${vehicle.place.districtName} from ${formatLkr(vehicle.pricing.dailyRate)} per day. Platform-approved provider ${vehicle.provider.displayName}. Deposit ${formatLkr(vehicle.pricing.securityDeposit)}.`;
+  const providerWording = vehicle.provider.documentsVerified
+    ? 'Verified provider'
+    : 'Platform-approved provider';
+  const description = `${vehicle.make} ${vehicle.model} ${vehicle.modelYear} for rent in ${vehicle.place.name}, ${vehicle.place.districtName} from ${formatLkr(vehicle.pricing.dailyRate)} per day. ${providerWording} ${vehicle.provider.displayName}. Deposit ${formatLkr(vehicle.pricing.securityDeposit)}.`;
   return {
     title: `${vehicle.title} – rent in ${vehicle.place.name}`,
     description,
@@ -112,7 +115,10 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
         ← Back to search
       </Link>
       <header className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight">{vehicle.title}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight">{vehicle.title}</h1>
+          {vehicle.documentsVerified ? <Badge variant="default">Verified vehicle</Badge> : null}
+        </div>
         <p className="text-muted-foreground">
           {vehicle.make} {vehicle.model} {vehicle.modelYear} · {vehicle.place.name},{' '}
           {vehicle.place.districtName}
@@ -191,7 +197,11 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
             <CardHeader>
               <CardTitle className="text-base">{vehicle.provider.displayName}</CardTitle>
               <CardDescription>
-                <Badge variant="secondary">Platform-approved provider</Badge>
+                <Badge variant={vehicle.provider.documentsVerified ? 'default' : 'secondary'}>
+                  {vehicle.provider.documentsVerified
+                    ? 'Verified provider'
+                    : 'Platform-approved provider'}
+                </Badge>
               </CardDescription>
             </CardHeader>
             <CardContent className="text-muted-foreground grid gap-1 text-sm">
@@ -215,8 +225,13 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
                 </p>
               ) : null}
               <p className="mt-2 text-xs">
-                Our team reviewed this provider’s details and operating area. Contact details are
-                shared once a booking is confirmed.
+                {vehicle.provider.documentsVerified
+                  ? 'Our team reviewed this provider’s details, operating area and verification documents.'
+                  : 'Our team reviewed this provider’s details and operating area.'}{' '}
+                {vehicle.documentsVerified
+                  ? 'This vehicle’s registration, revenue licence and insurance were reviewed and are in date.'
+                  : ''}{' '}
+                Contact details are shared once a booking is confirmed.
               </p>
             </CardContent>
           </Card>

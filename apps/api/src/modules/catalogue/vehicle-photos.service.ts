@@ -235,6 +235,64 @@ export class VehiclePhotosService {
     }
   }
 
+  /**
+   * Admin moderation (Phase 9): soft-deletes the photo in any listing state,
+   * renumbers the rest, audits with the reason and removes the objects.
+   * Dropping below `MIN_VEHICLE_PHOTOS` takes the listing out of search by
+   * the searchable predicate itself; nothing is fabricated in its place.
+   */
+  async removeByAdmin(
+    admin: { id: string },
+    vehicleId: string,
+    photoId: string,
+    reason: string,
+    meta: RequestMeta,
+  ): Promise<{ removed: VehiclePhoto; remaining: number }> {
+    const result = await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(vehiclePhotos)
+        .set({ deletedAt: new Date() })
+        .where(
+          and(
+            eq(vehiclePhotos.id, photoId),
+            eq(vehiclePhotos.vehicleId, vehicleId),
+            isNull(vehiclePhotos.deletedAt),
+          ),
+        )
+        .returning();
+      if (!row) throw new ApiException('NOT_FOUND', 'Photo not found', 404);
+      await this.renumber(tx, vehicleId);
+      const remaining = (await this.listActive(vehicleId, tx)).length;
+      await this.audit.record(
+        {
+          actorUserId: admin.id,
+          actorType: 'admin',
+          action: 'vehicle_photo.removed_by_admin',
+          targetType: 'vehicle',
+          targetId: vehicleId,
+          reason,
+          ip: meta.ip ?? null,
+          metadata: { photoId: row.id, remainingPhotos: remaining },
+        },
+        tx,
+      );
+      return { removed: row, remaining };
+    });
+    try {
+      await this.storage.delete('private', [result.removed.storageKey]);
+      await this.storage.delete(
+        'public',
+        VARIANT_NAMES.map((name) => `${result.removed.publicPrefix}/${name}.webp`),
+      );
+    } catch (error) {
+      this.logger.warn(
+        { photoId: result.removed.id, err: error instanceof Error ? error.message : String(error) },
+        'Photo objects could not be deleted from storage',
+      );
+    }
+    return result;
+  }
+
   async reorder(
     provider: ProviderProfile,
     vehicleId: string,

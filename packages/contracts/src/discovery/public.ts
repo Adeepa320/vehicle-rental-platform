@@ -162,6 +162,12 @@ export const PublicProviderBadgeSchema = z.object({
   displayName: z.string(),
   /** Always true for anything public: only platform-reviewed providers are listed. */
   platformApproved: z.literal(true),
+  /**
+   * "Verified provider" (Phase 9): the identity document (and, for a registered
+   * business, the business registration) was reviewed and approved by the
+   * platform team. False means "Platform-approved provider" only.
+   */
+  documentsVerified: z.boolean(),
 });
 export type PublicProviderBadge = z.infer<typeof PublicProviderBadgeSchema>;
 
@@ -238,6 +244,11 @@ export const PublicVehicleCardSchema = z.object({
   estimate: RentalEstimateSchema.nullable(),
   /** Published reviews of this vehicle (Phase 8). */
   rating: RatingSummarySchema,
+  /**
+   * "Verified vehicle" (Phase 9): certificate of registration, revenue licence
+   * and insurance are approved and in date. Derived on read; drops on expiry.
+   */
+  documentsVerified: z.boolean(),
 });
 export type PublicVehicleCard = z.infer<typeof PublicVehicleCardSchema>;
 

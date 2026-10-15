@@ -17,6 +17,7 @@ import {
   TimelineCard,
 } from '@/components/bookings/booking-parts';
 import { PayAdvanceButton, PaymentStateLine } from '@/components/bookings/payment-parts';
+import { DisputeCta } from '@/components/disputes/booking-dispute';
 import { LicensingGuidance } from '@/components/guidance/licensing-guidance';
 import { ReviewCta } from '@/components/reviews/review-cta';
 import { Photo } from '@/components/public/photo';
@@ -89,7 +90,11 @@ export default function CustomerBookingPage() {
             Booking {booking.reference} · {formatDay(booking.startsAt)} →{' '}
             {formatDay(booking.endsAt)} · {booking.rentalDays} day
             {booking.rentalDays === 1 ? '' : 's'} · {booking.provider.displayName}{' '}
-            <Badge variant="secondary">Platform-approved provider</Badge>
+            <Badge variant="secondary">
+              {booking.provider.documentsVerified
+                ? 'Verified provider'
+                : 'Platform-approved provider'}
+            </Badge>
           </p>
           <p className="text-sm">{meta.customer}</p>
           {booking.status === 'requested' ? (
@@ -170,6 +175,7 @@ export default function CustomerBookingPage() {
         <DriverCard booking={booking} />
         <HandoverCard booking={booking} />
         <ReviewCta booking={booking} />
+        <DisputeCta booking={booking} href={`/bookings/${booking.id}/dispute`} />
         {booking.status === 'accepted' || booking.status === 'confirmed' ? (
           <div className="lg:col-span-2">
             <LicensingGuidance categoryId={booking.vehicle.categoryId} variant="compact" />

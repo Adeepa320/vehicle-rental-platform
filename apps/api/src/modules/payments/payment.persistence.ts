@@ -64,6 +64,8 @@ export interface PaymentEventInput {
   signatureValid?: boolean | null;
   /** Codes, ids and amounts only; never secrets, signatures, raw payloads or card data. */
   metadata?: Record<string, unknown>;
+  /** The moment of the change when the caller dates it (a refund's `refunded_at`); defaults to `now()`. */
+  createdAt?: Date;
 }
 
 /** Appends to the payment audit trail; call inside the transaction of the change. */
@@ -83,6 +85,7 @@ export async function recordPaymentEvent(
     statusCode: input.statusCode ?? null,
     signatureValid: input.signatureValid ?? null,
     metadata: input.metadata ?? null,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   });
 }
 
@@ -167,10 +170,29 @@ export async function cancelPendingPayments(
 }
 
 export interface CancellationSettlementInput {
-  cancelledBy: 'customer' | 'provider';
+  /** `platform` = operational cancellation by an admin (Phase 9): always a full refund. */
+  cancelledBy: 'customer' | 'provider' | 'platform';
   /** Hours before pickup within which a customer cancellation still gets a full refund. */
   fullRefundHours: number;
   now: Date;
+}
+
+/**
+ * The one cancellation refund rule (USER_FLOWS §1.7, TECH_DECISIONS D56), as a
+ * pure function so the admin preview and the settlement cannot disagree:
+ * provider or platform cancellation → full refund; customer cancellation at
+ * least `fullRefundHours` before pickup → full refund; later → forfeited.
+ */
+export function cancellationRefundDecision(
+  startsAt: Date,
+  input: CancellationSettlementInput,
+): { fullRefund: boolean; hoursBeforePickup: number } {
+  const hoursBeforePickup = (startsAt.getTime() - input.now.getTime()) / 3_600_000;
+  const fullRefund =
+    input.cancelledBy === 'provider' ||
+    input.cancelledBy === 'platform' ||
+    hoursBeforePickup >= input.fullRefundHours;
+  return { fullRefund, hoursBeforePickup };
 }
 
 export interface CancellationSettlement {
@@ -203,8 +225,7 @@ export async function settlePaymentsOnCancellation(
   if (!paid || paid.status !== 'paid') {
     return { refundDueAmount: null, forfeited: false, paidPaymentId: paid?.id ?? null };
   }
-  const hoursBeforePickup = (booking.startsAt.getTime() - input.now.getTime()) / 3_600_000;
-  const fullRefund = input.cancelledBy === 'provider' || hoursBeforePickup >= input.fullRefundHours;
+  const { fullRefund, hoursBeforePickup } = cancellationRefundDecision(booking.startsAt, input);
   const refundDueAmount = fullRefund ? paid.amount : '0.00';
   await executor
     .update(payments)

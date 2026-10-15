@@ -31,6 +31,8 @@ export interface ViewContext {
   /** The booking's payment attempts (oldest first); drives the payment summary and `pay` action. */
   payments: PaymentRow[];
   thumbnailUrl: string | null;
+  /** Provider documents approved and in date (Phase 9 "Verified provider" badge). */
+  providerDocumentsVerified: boolean;
 }
 
 /** The immutable snapshot, as stored; never recomputed from the vehicle. */
@@ -143,6 +145,7 @@ export function toBookingView(
       slug: ctx.provider.slug,
       displayName: ctx.provider.displayName,
       platformApproved: true,
+      documentsVerified: view.providerDocumentsVerified,
     },
     customer: {
       id: ctx.customer.id,
@@ -241,6 +244,7 @@ export function toAdminBookingView(
   events: BookingEvent[],
   hold: VehicleHold | null,
   payments: AdminPayment[],
+  extras: Pick<AdminBooking, 'dispute' | 'review' | 'resendableTemplates'>,
 ): AdminBooking {
   return {
     ...toBookingView(ctx, { ...view, viewer: 'admin' }, events),
@@ -248,5 +252,6 @@ export function toAdminBookingView(
     providerEmail: ctx.owner.email,
     hold: hold ? toHold(hold) : null,
     payments,
+    ...extras,
   };
 }

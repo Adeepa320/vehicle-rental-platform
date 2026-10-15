@@ -1,24 +1,30 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  OPEN_BOOKING_STATUSES,
   ProviderApplicationRequiredSchema,
   type AdminProviderApplicationListQuery,
   type AdminProviderListQuery,
+  type AdminProviderOperations,
   type ProviderApplicationStatus,
   type ProviderStatus,
 } from '@vrp/contracts';
 import {
+  bookings,
   providerApplications,
+  providerLocations,
   providerProfiles,
   providerServiceAreas,
   providerVehicleCategories,
   users,
+  vehicleCategories,
+  vehicles,
   type Database,
   type ProviderApplication,
   type ProviderProfile,
   type User,
 } from '@vrp/database';
-import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { PinoLogger } from 'nestjs-pino';
 
 import { ApiException } from '../../common/errors/api.exception';
@@ -27,7 +33,11 @@ import type { Env } from '../../config/env.schema';
 import { DATABASE } from '../../database/database.module';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser, RequestMeta } from '../auth/auth.types';
+import { searchableCondition } from '../discovery/searchable';
+import { DisputesService } from '../disputes/disputes.service';
+import { DocumentsService } from '../documents/documents.service';
 import { EmailService } from '../notifications/email/email.service';
+import { ProviderMetricsService } from '../providers/provider-metrics.service';
 import {
   providerApprovedEmail,
   providerChangesRequestedEmail,
@@ -62,6 +72,9 @@ export class AdminReviewService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly providers: ProvidersService,
+    private readonly metrics: ProviderMetricsService,
+    private readonly documents: DocumentsService,
+    private readonly disputes: DisputesService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
     config: ConfigService<Env, true>,
@@ -116,6 +129,7 @@ export class AdminReviewService {
 
   async listProviders(query: AdminProviderListQuery) {
     const cursor = decodeCursor(query.cursor);
+    const q = query.q ? `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : undefined;
     const rows = await this.db
       .select({
         profile: providerProfiles,
@@ -126,6 +140,14 @@ export class AdminReviewService {
       .where(
         and(
           query.status ? eq(providerProfiles.status, query.status) : undefined,
+          q
+            ? or(
+                ilike(providerProfiles.displayName, q),
+                ilike(providerProfiles.slug, q),
+                ilike(users.email, q),
+                ilike(users.fullName, q),
+              )
+            : undefined,
           cursor
             ? or(
                 lt(providerProfiles.createdAt, cursor.createdAt),
@@ -161,6 +183,73 @@ export class AdminReviewService {
       .limit(1);
     if (!row) throw new ApiException('NOT_FOUND', 'Provider not found', 404);
     return { ...row, relations: await this.providers.relationsFor(row.profile.id) };
+  }
+
+  /**
+   * The operational panel of a provider (Phase 9): what a suspension would
+   * strand, what a reactivation would re-list, the Phase 8 trust metrics
+   * (same formulas) and the document verification state.
+   */
+  async operations(
+    profile: ProviderProfile,
+    owner: Pick<User, 'id'>,
+  ): Promise<AdminProviderOperations> {
+    const [vehicleRow, searchableRow, bookingRow, metrics, documents, openDisputes, ownerRow] =
+      await Promise.all([
+        this.db
+          .select({
+            total: sql<number>`count(*)::int`,
+            approved: sql<number>`count(*) filter (where ${vehicles.status} = 'approved')::int`,
+            awaitingReview: sql<number>`count(*) filter (where ${vehicles.status} in ('submitted', 'under_review'))::int`,
+            suspended: sql<number>`count(*) filter (where ${vehicles.status} = 'suspended')::int`,
+          })
+          .from(vehicles)
+          .where(and(eq(vehicles.providerId, profile.id), isNull(vehicles.deletedAt)))
+          .then((r) => r[0]),
+        this.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(vehicles)
+          .innerJoin(providerProfiles, eq(providerProfiles.id, vehicles.providerId))
+          .innerJoin(providerLocations, eq(providerLocations.id, vehicles.locationId))
+          .innerJoin(vehicleCategories, eq(vehicleCategories.id, vehicles.categoryId))
+          .where(and(eq(vehicles.providerId, profile.id), searchableCondition()))
+          .then((r) => r[0]),
+        this.db
+          .select({
+            open: sql<number>`count(*) filter (where ${inArray(bookings.status, [...OPEN_BOOKING_STATUSES])})::int`,
+            confirmedOrActive: sql<number>`count(*) filter (where ${bookings.status} in ('confirmed', 'active'))::int`,
+            completed: sql<number>`count(*) filter (where ${bookings.status} = 'completed')::int`,
+          })
+          .from(bookings)
+          .where(eq(bookings.providerId, profile.id))
+          .then((r) => r[0]),
+        this.metrics.metricsFor(profile.id),
+        this.documents.verificationForProvider(profile),
+        this.disputes.countOpenForUser(owner.id, profile.id),
+        this.db
+          .select({ status: users.status })
+          .from(users)
+          .where(eq(users.id, owner.id))
+          .then((r) => r[0]),
+      ]);
+    return {
+      ownerStatus: ownerRow?.status ?? 'active',
+      vehicles: {
+        total: vehicleRow?.total ?? 0,
+        approved: vehicleRow?.approved ?? 0,
+        awaitingReview: vehicleRow?.awaitingReview ?? 0,
+        suspended: vehicleRow?.suspended ?? 0,
+        searchable: searchableRow?.count ?? 0,
+      },
+      bookings: {
+        open: bookingRow?.open ?? 0,
+        confirmedOrActive: bookingRow?.confirmedOrActive ?? 0,
+        completed: bookingRow?.completed ?? 0,
+      },
+      metrics,
+      documents,
+      openDisputes,
+    };
   }
 
   // ------------------------------------------------------- transitions

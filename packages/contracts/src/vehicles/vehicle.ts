@@ -8,6 +8,7 @@ import {
   isAmount,
   multiplyAmount,
 } from '../common/money';
+import { DocumentVerificationSchema } from '../documents/document';
 import { PaginationQuerySchema } from '../providers/provider';
 import { SlugIdSchema } from '../reference/reference';
 import { ProviderLocationSchema } from './location';
@@ -419,6 +420,23 @@ export const VehicleProviderSummarySchema = z.object({
   owner: z.object({ id: z.uuid(), email: z.email(), fullName: z.string() }),
 });
 
+/** Operational facts an admin needs next to the listing (Phase 9). */
+export const AdminVehicleOperationsSchema = z.object({
+  /** Satisfies the public searchable predicate right now (TECH_DECISIONS D44). */
+  publiclySearchable: z.boolean(),
+  /** Human-readable reasons it is not searchable (empty when it is). */
+  searchabilityIssues: z.array(z.string()),
+  photoCount: z.number().int().min(0),
+  minimumPhotos: z.number().int().min(0),
+  documents: DocumentVerificationSchema,
+  /** Bookings in requested / accepted / confirmed / active on this vehicle. */
+  openBookings: z.number().int().min(0),
+  /** Set when the listing was paused by the document-expiry sweep. */
+  autoPausedAt: z.iso.datetime().nullable(),
+  suspensionReason: z.string().nullable(),
+});
+export type AdminVehicleOperations = z.infer<typeof AdminVehicleOperationsSchema>;
+
 /** Admin view: provider identity, internal notes, reviewer and the pickup location. */
 export const AdminVehicleSchema = VehicleSchema.extend({
   adminNotes: z.string().nullable(),
@@ -426,6 +444,7 @@ export const AdminVehicleSchema = VehicleSchema.extend({
   reviewedAt: z.iso.datetime().nullable(),
   provider: VehicleProviderSummarySchema,
   location: ProviderLocationSchema.nullable(),
+  operations: AdminVehicleOperationsSchema,
 });
 export type AdminVehicle = z.infer<typeof AdminVehicleSchema>;
 
@@ -437,8 +456,26 @@ export type AdminVehicleSummary = z.infer<typeof AdminVehicleSummarySchema>;
 export const AdminVehicleListQuerySchema = PaginationQuerySchema.extend({
   status: VehicleStatusSchema.optional(),
   providerId: z.uuid().optional(),
+  categoryId: SlugIdSchema.optional(),
+  /** Pickup place of the listing's location. */
+  placeId: z.uuid().optional(),
+  /** Title, make, model, registration number or provider name (case-insensitive, partial). */
+  q: z.string().trim().min(2).max(100).optional(),
 });
 export type AdminVehicleListQuery = z.infer<typeof AdminVehicleListQuerySchema>;
+
+/** `POST /admin/vehicles/{id}/category`: move a listing to another **existing, active** category. */
+export const CorrectVehicleCategoryRequestSchema = z.strictObject({
+  categoryId: SlugIdSchema,
+  reason: z.string().trim().min(5).max(500),
+});
+export type CorrectVehicleCategoryRequest = z.infer<typeof CorrectVehicleCategoryRequestSchema>;
+
+/** `POST /admin/vehicles/{id}/photos/{photoId}/remove`. */
+export const RemoveVehiclePhotoRequestSchema = z.strictObject({
+  reason: z.string().trim().min(5).max(500),
+});
+export type RemoveVehiclePhotoRequest = z.infer<typeof RemoveVehiclePhotoRequestSchema>;
 
 export const AdminVehicleListSchema = z.object({
   data: z.array(AdminVehicleSummarySchema),

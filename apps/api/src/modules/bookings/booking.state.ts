@@ -31,6 +31,7 @@ export type BookingTransitionAction =
   | 'confirm'
   | 'cancel_by_customer'
   | 'cancel_by_provider'
+  | 'cancel_by_platform'
   | 'pickup'
   | 'return'
   | 'no_show';
@@ -100,6 +101,14 @@ export const BOOKING_TRANSITIONS: Readonly<Record<BookingTransitionAction, Booki
     from: ['accepted', 'confirmed'],
     to: 'cancelled_by_provider',
     actor: 'provider',
+    createsHold: false,
+    releasesHold: true,
+  },
+  /** Operational cancellation by an admin (Phase 9); never from `active` — a running rental is returned, not cancelled. */
+  cancel_by_platform: {
+    from: ['requested', 'accepted', 'confirmed'],
+    to: 'cancelled_by_platform',
+    actor: 'admin',
     createsHold: false,
     releasesHold: true,
   },

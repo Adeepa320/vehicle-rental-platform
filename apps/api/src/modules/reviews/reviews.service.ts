@@ -552,7 +552,12 @@ export class ReviewsService {
     return executor
       .select({
         review: reviews,
-        customer: { id: users.id, fullName: users.fullName, email: users.email },
+        customer: {
+          id: users.id,
+          fullName: users.fullName,
+          email: users.email,
+          status: users.status,
+        },
         vehicle: vehicles,
         booking: {
           id: bookings.id,

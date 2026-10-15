@@ -311,6 +311,44 @@ export class VehiclesService {
     });
   }
 
+  /**
+   * System pause (Phase 9 document expiry): `approved | inactive → suspended`
+   * with the reason, actor `system`, inside the caller's transaction. Returns
+   * undefined when the listing is in no pausable state (nothing to do).
+   */
+  async systemSuspend(
+    tx: DatabaseExecutor,
+    vehicleId: string,
+    reason: string,
+    metadata: Record<string, unknown>,
+    now = new Date(),
+  ): Promise<Vehicle | undefined> {
+    const [row] = await tx
+      .update(vehicles)
+      .set({ status: 'suspended', suspendedAt: now, suspensionReason: reason, reviewedAt: now })
+      .where(
+        and(
+          eq(vehicles.id, vehicleId),
+          isNull(vehicles.deletedAt),
+          inArray(vehicles.status, ['approved', 'inactive']),
+        ),
+      )
+      .returning();
+    if (!row) return undefined;
+    await this.audit.record(
+      {
+        actorType: 'system',
+        action: 'vehicle.auto_paused',
+        targetType: 'vehicle',
+        targetId: row.id,
+        reason,
+        metadata: { providerId: row.providerId, ...metadata },
+      },
+      tx,
+    );
+    return row;
+  }
+
   /** Submission checklist plus the live state of the referenced location. */
   async completenessIssues(providerId: string, row: Vehicle): Promise<ApiErrorDetail[]> {
     const issues = vehicleSubmissionIssues(vehicleFields(row), {

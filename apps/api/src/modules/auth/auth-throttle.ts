@@ -21,6 +21,8 @@ export const AUTH_LIMITS = {
   tokenUse: { limit: 20, ttl: minutes(15) },
   /** Refresh / logout per IP. */
   refresh: { limit: 60, ttl: minutes(1) },
+  /** Dispute open / message posts per IP (Phase 9): generous for a conversation, tight for a flood. */
+  thread: { limit: envInt('THREAD_POSTS_PER_15MIN', 30), ttl: minutes(15) },
 } as const;
 
 export type AuthLimitKind = keyof typeof AUTH_LIMITS;
