@@ -1,0 +1,51 @@
+# Dependency update proposals (SECURITY_AND_PRIVACY.md §14 "Dependency policy").
+# Dependabot opens pull requests; CI (lint, typecheck, tests, `pnpm audit --prod`)
+# must pass and a human merges. Security advisories are raised regardless of the
+# schedule. Nothing here deploys anything.
+version: 2
+updates:
+  - package-ecosystem: npm # pnpm workspaces are supported through the lockfile
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '03:00'
+      timezone: Asia/Colombo
+    open-pull-requests-limit: 5
+    groups:
+      production-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # Major versions of the framework pins are decided in docs/TECH_DECISIONS.md, not by a bot.
+      - dependency-name: '@nestjs/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: next
+        update-types: ['version-update:semver-major']
+      - dependency-name: react
+        update-types: ['version-update:semver-major']
+      - dependency-name: react-dom
+        update-types: ['version-update:semver-major']
+      - dependency-name: drizzle-orm
+        update-types: ['version-update:semver-major']
+      - dependency-name: drizzle-kit
+        update-types: ['version-update:semver-major']
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/web
+    schedule:
+      interval: monthly

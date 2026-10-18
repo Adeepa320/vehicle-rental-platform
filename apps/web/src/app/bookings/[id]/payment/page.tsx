@@ -115,7 +115,9 @@ function PaymentStatus() {
       </header>
 
       {phase === 'checking' ? (
-        <p className="text-muted-foreground text-sm">Checking your payment…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Checking your payment…
+        </p>
       ) : null}
       {phase === 'waiting' ? (
         <FormMessage

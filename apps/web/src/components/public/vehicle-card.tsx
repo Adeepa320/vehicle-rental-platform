@@ -30,17 +30,22 @@ export function VehicleCard({ card, state, reference, highlighted }: VehicleCard
     <article
       className={`flex flex-col gap-3 rounded-lg border p-3 sm:flex-row ${highlighted ? 'ring-ring ring-2' : ''}`}
       data-vehicle-id={card.id}
+      aria-labelledby={`vehicle-${card.id}-title`}
     >
-      <Link href={href} className="block w-full shrink-0 sm:w-56">
+      <Link href={href} className="block w-full shrink-0 sm:w-56" tabIndex={-1} aria-hidden>
         <Photo
           src={photoSrc(card.photo, 'medium')}
-          alt={card.title}
+          alt={`${card.title} – photo 1`}
           className="aspect-[4/3] w-full"
         />
       </Link>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div>
-          <Link href={href} className="text-lg font-semibold underline-offset-4 hover:underline">
+          <Link
+            id={`vehicle-${card.id}-title`}
+            href={href}
+            className="text-lg font-semibold underline-offset-4 hover:underline"
+          >
             {card.title}
           </Link>
           {card.documentsVerified ? (

@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 
 import { AppLoggerModule } from './common/logging/logger.module';
+import { ObservabilityModule } from './common/observability/observability.module';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { BookingsCoreModule } from './modules/bookings/bookings-core.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { RetentionModule } from './modules/retention/retention.module';
 import { EmailModule } from './modules/notifications/email/email.module';
 import { RemindersModule } from './modules/notifications/reminders/reminders.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -22,6 +24,7 @@ import { StorageModule } from './modules/storage/storage.module';
   imports: [
     AppConfigModule,
     AppLoggerModule,
+    ObservabilityModule,
     DatabaseModule,
     JobsModule,
     AuditModule,
@@ -30,6 +33,7 @@ import { StorageModule } from './modules/storage/storage.module';
     BookingsCoreModule,
     RemindersModule,
     DocumentsModule,
+    RetentionModule,
   ],
 })
 export class WorkerModule {}

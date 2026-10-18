@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { PinoLogger } from 'nestjs-pino';
 
 import { toErrorResponse } from '../errors/error-response';
+import { ErrorReporter } from '../observability/error-reporter';
 
 /**
  * Global filter: every error leaves the API as the shared `ApiError` envelope
@@ -14,14 +15,19 @@ import { toErrorResponse } from '../errors/error-response';
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  constructor(private readonly logger: PinoLogger) {
+  constructor(
+    private readonly logger: PinoLogger,
+    private readonly reporter: ErrorReporter,
+  ) {
     this.logger.setContext(AllExceptionsFilter.name);
   }
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
-    const request = http.getRequest<Request & { id?: unknown }>();
+    const request = http.getRequest<
+      Request & { id?: unknown; route?: { path?: string }; user?: { id?: string } }
+    >();
     const requestId = typeof request.id === 'string' ? request.id : undefined;
 
     const { status, body } = toErrorResponse(exception, requestId);
@@ -31,6 +37,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
         { err: exception, requestId, method: request.method, url: request.originalUrl },
         'Unhandled exception',
       );
+      this.reporter.capture(exception, {
+        requestId,
+        method: request.method,
+        route: request.route?.path,
+        userId: request.user?.id,
+      });
     }
 
     response.status(status).json(body);

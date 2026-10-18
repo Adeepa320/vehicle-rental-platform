@@ -1,6 +1,6 @@
 # Database Design
 
-**Status:** Draft v0.1 for review (planning phase, 2026-10-02). Migrations 0000–0010 implement Phases 1–5 locally; the "Phase N status" rows in §2 and the "As implemented" notes in §6 record every deviation from this draft.
+**Status:** Draft v0.1 for review (planning phase, 2026-10-02). Migrations 0000–0010 implement Phases 1–5 locally; the "Phase N status" rows in §2 and the "As implemented" notes in §6 record every deviation from this draft. Phase 10 (2026-10-17): migrations `0020_production_readiness` and `0021_production_readiness_triggers` add `user_mfa`, `user_mfa_recovery_codes`, `privacy_requests`, `refresh_tokens.mfa_verified_at` and `users.privacy_version` (22 migrations in total; forward-only — rollback is a new migration, see `docs/DEPLOYMENT.md` §5).
 **Related:** [ARCHITECTURE.md](ARCHITECTURE.md), [API_DESIGN.md](API_DESIGN.md), [SECURITY_AND_PRIVACY.md](SECURITY_AND_PRIVACY.md), [TECH_DECISIONS.md](TECH_DECISIONS.md)
 
 ---
@@ -47,7 +47,7 @@ Grouped by module (module boundaries mirror the backend architecture):
 
 | Module           | Tables                                                                                                               |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Identity & auth  | `users`, `auth_identities`, `refresh_tokens`, `otp_codes`                                                            |
+| Identity & auth  | `users`, `auth_identities`, `refresh_tokens`, `otp_codes`; Phase 10: `user_mfa`, `user_mfa_recovery_codes`           |
 | Customer         | `customer_driver_details`                                                                                            |
 | Provider         | `provider_profiles`, `provider_documents`, `provider_members` (future)                                               |
 | Geography        | `districts`, `places`, `locations`                                                                                   |
@@ -58,7 +58,7 @@ Grouped by module (module boundaries mirror the backend architecture):
 | Trust            | `reviews`, `disputes`, `dispute_messages`                                                                            |
 | Notifications    | `notifications`, `notification_deliveries`                                                                           |
 | Files            | `file_objects`                                                                                                       |
-| Platform         | `platform_settings`, `admin_audit_logs`                                                                              |
+| Platform         | `platform_settings`, `admin_audit_logs` (implemented as `audit_events`); Phase 10: `privacy_requests`                |
 
 ## 4. ERD
 
@@ -320,6 +320,35 @@ Server-side session records enabling rotation, revocation and reuse detection.
 | last_used_at   | timestamptz NULL              |                                                                    |
 
 **Indexes:** `(user_id)`, `(family_id)`, `(expires_at)` for cleanup.
+
+**Phase 10 (2026-10-17, TECH_DECISIONS D67, migration `0020_production_readiness`).** `refresh_tokens.mfa_verified_at timestamptz NULL` — set when the login completed the second factor (or when enrolment was confirmed in this session) and copied to the new row on every rotation; the access token's `mfa` claim is minted only from it. Rotation now inherits the lifetime of the rotated token, so admin sessions stay in their 8-hour class. `users.privacy_version text NULL` records the privacy-notice version accepted at registration next to `terms_version`. Expired rows are now purged 30 days after `expires_at` by `retention.sweep` (D71).
+
+#### `user_mfa` (Phase 10, TECH_DECISIONS D67)
+
+One row per enrolled (or enrolling) privileged user.
+
+| Column                      | Type                                  | Notes                                                                                                                                                    |
+| --------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| user_id                     | uuid PK, FK → users ON DELETE CASCADE |                                                                                                                                                          |
+| secret_ciphertext           | text NOT NULL                         | AES-256-GCM envelope `v1.<keyId>.<nonce>.<tag>.<ciphertext>` under `APP_DATA_ENCRYPTION_KEY`; AAD = `user_mfa:<user_id>`; **never the plaintext secret** |
+| confirmed_at                | timestamptz NULL                      | NULL while the enrolment is pending (no code has proven possession yet)                                                                                  |
+| last_used_step              | bigint NULL                           | Highest 30-second step for which a code was accepted — replay guard                                                                                      |
+| failed_attempts             | integer NOT NULL DEFAULT 0            | Consecutive wrong codes; reset on success                                                                                                                |
+| locked_until                | timestamptz NULL                      | Set after 5 failures (15 minutes); verification refused until then                                                                                       |
+| recovery_codes_generated_at | timestamptz NULL                      |                                                                                                                                                          |
+| created_at / updated_at     | timestamptz                           | `updated_at` trigger in `0021_production_readiness_triggers`                                                                                             |
+
+#### `user_mfa_recovery_codes` (Phase 10)
+
+| Column     | Type                             | Notes                                                                     |
+| ---------- | -------------------------------- | ------------------------------------------------------------------------- |
+| id         | uuid PK (UUIDv7)                 |                                                                           |
+| user_id    | uuid NOT NULL FK → users CASCADE |                                                                           |
+| code_hash  | text NOT NULL UNIQUE             | SHA-256 of the canonical ten-character base32 code; raw code never stored |
+| used_at    | timestamptz NULL                 | Consumed once                                                             |
+| created_at | timestamptz NOT NULL             |                                                                           |
+
+**Indexes:** unique `(code_hash)`, `(user_id)`. Regeneration deletes every row of the user and inserts a fresh set of 8; disabling MFA or `pnpm admin:mfa-reset` deletes both tables' rows for the user.
 
 #### `otp_codes`
 
@@ -936,6 +965,31 @@ Key/value with JSON values and audit of changes. Examples: `default_commission_r
 
 **Phase 9 (2026-10-15).** `before` / `after` live inside `metadata` for settings (`setting.updated`) and reference data (`district.updated`, `place.created | updated`, `vehicle_category.updated`, `vehicle.category_corrected { from, to }`). New actions: `user.suspended | reactivated | anonymised`, `document.uploaded | viewed | approved | rejected | replacement_requested`, `vehicle.auto_paused` (actor `system`), `vehicle.changes_requested` (photo moderation), `vehicle_photo.removed_by_admin`, `booking.cancelled_by_admin`, `booking.notification_resent { template, recipientRole }`, `dispute.opened | message_posted | review_started | internal_note_updated | resolved | rejected`. `GET /admin/audit-events` reads the table with keyset pagination `(created_at, id)` and filters on actor, action (exact or prefix), target and time; `metadata` keys matching `secret | token | hash | sig | password | card | cookie | authorization` are dropped before serving and `ip` is never exposed. There is no write route; no code updates or deletes rows.
 
+**Phase 10 (2026-10-17).** New actions: `mfa.enrolment_started | enrolled | disabled | recovery_code_used | recovery_codes_regenerated | locked | reset` (metadata holds counts and reasons only — never secrets, codes or hashes), `user.data_exported`, `privacy_request.created | review_started | internal_note_updated | export_generated` (completion and rejection are recorded on the request row and through the anonymisation's own `user.anonymised`), `retention.sweep_completed { dryRun, counts per class, truncated[] }` (actor `system`). New settings in the `retention` group (super admin, high-impact): `document_retention_rejected_days` (30), `document_retention_superseded_days` (90), `driver_snapshot_retention_days` (0 = disabled), `search_log_retention_days` (400); `0` keeps rows forever where documented.
+
+#### `privacy_requests` (Phase 10, TECH_DECISIONS D69)
+
+Data-subject requests as durable records worked from the admin console. The exported data is never stored here; a deletion is completed through the Phase 9 anonymisation, never by a second erasure path.
+
+| Column                  | Type                                                                                         | Notes                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| id                      | uuid PK (UUIDv7)                                                                             |                                                                                |
+| user_id                 | uuid NOT NULL FK → users ON DELETE CASCADE                                                   | The data subject (the row survives anonymisation because the user row is kept) |
+| type                    | `privacy_request_type` (`access` \| `deletion`)                                              |                                                                                |
+| status                  | `privacy_request_status` (`open` \| `in_review` \| `completed` \| `rejected`) DEFAULT `open` |                                                                                |
+| source                  | text NOT NULL                                                                                | `self` (through the API) or `admin` (recorded on the user's behalf)            |
+| requester_note          | text NULL                                                                                    | ≤ 1000 characters; admins only                                                 |
+| requested_at            | timestamptz NOT NULL DEFAULT now()                                                           |                                                                                |
+| acknowledged_at         | timestamptz NULL                                                                             | Set by `start-review`                                                          |
+| completed_at            | timestamptz NULL                                                                             |                                                                                |
+| rejected_at             | timestamptz NULL                                                                             |                                                                                |
+| handled_by              | uuid NULL FK → users ON DELETE SET NULL                                                      | The acting admin                                                               |
+| public_note             | text NULL                                                                                    | Shown to the requester on completion / rejection                               |
+| internal_note           | text NULL                                                                                    | Never leaves the console                                                       |
+| created_at / updated_at | timestamptz                                                                                  | `updated_at` trigger in `0021`                                                 |
+
+**Indexes:** `(status, requested_at)`, `(user_id, requested_at)`, unique `(user_id, type) WHERE status IN ('open', 'in_review')` — one open request per type per user (`409 PRIVACY_REQUEST_ALREADY_OPEN`).
+
 ## 7. Availability and double-booking strategy
 
 ### 7.1 Requirements
@@ -1069,12 +1123,16 @@ Triggers maintain `updated_at`. All status transitions on bookings write `bookin
 
 **As implemented in Phase 9 (2026-10-15, TECH_DECISIONS D65) — anonymisation.** Admin-driven (`POST /admin/users/{id}/anonymise { reason, confirmEmail }`, the account e-mail typed as confirmation; the self-service request is still unbuilt) and refused with `409 ACCOUNT_ANONYMISATION_BLOCKED` (`details[].issue` ∈ `open_booking_as_customer | open_booking_as_provider | open_dispute | unresolved_payment | refund_due | privileged_account | already_anonymised`). When allowed, in one transaction: `users.email → deleted+<id>@anonymised.invalid`, `full_name → 'Deleted user'`, `phone_e164` / `country_code` nulled, `password_hash` replaced by an unusable marker, `status = 'deleted'` + `deleted_at`, `sessions_revoked_at` set and all refresh tokens revoked, `one_time_tokens` deleted, `provider_applications` contact fields scrubbed, `booking_drivers.full_name → 'Former customer'`, an owned `provider_profiles` row scrubbed and suspended ("Owner account anonymised", audited `provider_profile.suspended`). Bookings, payments, payment events, reviews, disputes, notifications and audit rows **keep their foreign keys** (ids and money history are retained); public reviews and dispute threads render "Former customer". A courtesy e-mail goes to the old address; audited `user.anonymised`; irreversible. The purge of driver snapshots and the document retention jobs remain unimplemented (superseded / rejected documents are kept with their timestamps).
 
+**As implemented in Phase 10 (2026-10-17, TECH_DECISIONS D69 / D71).** The self-service request exists (`privacy_requests`, §6.12); completion still runs the same `AdminUsersService.anonymise`. The retention sweep (`retention.sweep`, daily) now purges: consumed / expired `one_time_tokens` after 7 days; `refresh_tokens` 30 days after `expires_at` (the `replaced_by_id` self-references are cleared before the delete); `verification_documents` with `status = rejected` after `document_retention_rejected_days` and `superseded` after `document_retention_superseded_days` — the private object is deleted **before** the row and a failed object delete keeps the row for the next run; `search_logs` after `search_log_retention_days`; and, only when `driver_snapshot_retention_days` > 0, `booking_drivers.full_name → 'Driver details removed'` for bookings in a final status (completed, cancelled, declined, expired, no-show) older than that period and without an open dispute — `licence_country_code` and `licence_expires_on` are `NOT NULL` and are kept (they identify nobody). Everything in the first row of the table — bookings, payments, events, audit — stays untouched. The full inventory with legal basis and open decisions is `docs/security/DATA_RETENTION.md`.
+
 ## 10. Encryption of sensitive columns
 
 - Columns ending in `_enc` hold ciphertext produced by the application (AES-256-GCM, per-row random nonce, key from the secret manager, key id stored alongside for rotation). The DB never sees plaintext and backups are safe by default.
 - Where lookup is needed (duplicate licence detection) a keyed hash column (`_hash`, HMAC-SHA256) is stored.
 - Private files live in a private bucket; the DB stores only keys.
 - Disk-level encryption at rest is additionally expected from the managed Postgres provider.
+
+**As implemented in Phase 10 (2026-10-17, TECH_DECISIONS D67).** The helper exists: `DataEncryptionService` (`apps/api/src/common/crypto/data-encryption.ts`) encrypts with AES-256-GCM under `APP_DATA_ENCRYPTION_KEY` (32 bytes, base64; a documented development key is used locally and refused in production) and writes the self-describing envelope `v1.<keyId>.<nonce>.<tag>.<ciphertext>` (`keyId` = first 8 hex characters of SHA-256 of the key, 96-bit random nonce, additional authenticated data = `<table>:<row id>`), so the `key_id` column foreseen above is unnecessary; `APP_DATA_ENCRYPTION_KEY_PREVIOUS` lets the service decrypt during a rotation and `needsRotation()` finds rows to re-encrypt. The first encrypted column is `user_mfa.secret_ciphertext`; no `_enc` driver or identity column exists yet (none of that data is collected). The `_hash` HMAC lookup columns remain design only.
 
 ## 11. Seed data
 

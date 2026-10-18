@@ -75,7 +75,9 @@ export default function ProviderBookingPage() {
   if (area.status !== 'ready' || !booking) {
     return (
       <main className="mx-auto w-full max-w-4xl px-4 py-12">
-        <p className="text-muted-foreground text-sm">Loading booking…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Loading booking…
+        </p>
       </main>
     );
   }

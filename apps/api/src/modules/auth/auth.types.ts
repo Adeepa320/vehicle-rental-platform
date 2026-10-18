@@ -8,6 +8,10 @@ export interface AuthenticatedUser {
   roles: UserRole[];
   /** Refresh-token family id carried in the access token (`sid`). */
   sessionId: string;
+  /** The account has a confirmed authenticator-app factor (Phase 10). */
+  mfaEnrolled: boolean;
+  /** This session completed the second factor (claim `mfa` on the access token, set only by the server). */
+  mfaVerified: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {

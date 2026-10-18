@@ -43,6 +43,9 @@ export const NotificationTypeSchema = z.enum([
   'dispute.message',
   'dispute.resolved',
   'dispute.rejected',
+  'privacy.request_received',
+  'privacy.request_completed',
+  'privacy.request_rejected',
 ]);
 export type NotificationType = z.infer<typeof NotificationTypeSchema>;
 

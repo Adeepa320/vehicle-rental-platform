@@ -46,7 +46,9 @@ export default function AdminOverviewPage() {
       </header>
       {error ? <FormMessage variant="destructive">{error}</FormMessage> : null}
       {!overview ? (
-        <p className="text-muted-foreground text-sm">Loading overview…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Loading overview…
+        </p>
       ) : (
         <>
           <section className="grid gap-3">

@@ -5,3 +5,8 @@ dist
 coverage
 pnpm-lock.yaml
 packages/database/drizzle/meta
+apps/e2e/test-results
+apps/e2e/playwright-report
+apps/e2e/.world
+.smoke
+apps/web/public/maplibre

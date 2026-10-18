@@ -19,6 +19,7 @@ export const SettingGroupSchema = z.enum([
   'money',
   'display_currency',
   'disputes',
+  'retention',
 ]);
 export type SettingGroup = z.infer<typeof SettingGroupSchema>;
 
@@ -28,6 +29,8 @@ const Hours = z
   .max(24 * 30);
 const Grace = z.number().min(0).max(72);
 const Days = z.number().int().min(1).max(90);
+/** Retention periods in days; 0 disables the class (Phase 10, docs/security/DATA_RETENTION.md). */
+const RetentionDays = z.number().int().min(0).max(3650);
 const Km = z.number().min(1).max(200);
 /** Percent with at most two decimals, as a number (stored as JSON number). */
 const Percent = z
@@ -66,6 +69,10 @@ export const SETTING_KEYS = [
   'default_commission_rate',
   'advance_percentage',
   'indicative_exchange_rates',
+  'document_retention_rejected_days',
+  'document_retention_superseded_days',
+  'driver_snapshot_retention_days',
+  'search_log_retention_days',
 ] as const;
 export const SettingKeySchema = z.enum(SETTING_KEYS);
 export type SettingKey = z.infer<typeof SettingKeySchema>;
@@ -222,6 +229,46 @@ export const SETTING_DEFINITIONS: Readonly<Record<SettingKey, SettingDefinition>
     highImpact: false,
     schema: IndicativeRatesSettingSchema,
     hint: '{ asOf, source, rates: { USD, EUR, GBP, AUD } }',
+  },
+  document_retention_rejected_days: {
+    key: 'document_retention_rejected_days',
+    group: 'retention',
+    label: 'Rejected documents',
+    description:
+      'Days a rejected verification document and its file are kept before the daily retention sweep deletes them. 0 keeps them forever. Retention periods are pending legal review.',
+    highImpact: true,
+    schema: RetentionDays,
+    hint: 'days, 0–3650 (0 = keep)',
+  },
+  document_retention_superseded_days: {
+    key: 'document_retention_superseded_days',
+    group: 'retention',
+    label: 'Superseded documents',
+    description:
+      'Days a replaced (superseded) verification document and its file are kept after the newer upload. 0 keeps them forever.',
+    highImpact: true,
+    schema: RetentionDays,
+    hint: 'days, 0–3650 (0 = keep)',
+  },
+  driver_snapshot_retention_days: {
+    key: 'driver_snapshot_retention_days',
+    group: 'retention',
+    label: 'Driver snapshot purge',
+    description:
+      'Days after a booking finishes before the driver name and licence expiry on it are removed (bookings with an open dispute are skipped). 0 disables the purge; it stays disabled until legal review confirms the period.',
+    highImpact: true,
+    schema: RetentionDays,
+    hint: 'days, 0 = disabled',
+  },
+  search_log_retention_days: {
+    key: 'search_log_retention_days',
+    group: 'retention',
+    label: 'Search logs',
+    description:
+      'Days anonymous search logs (criteria and result counts only) are kept for the demand reports. 0 keeps them forever.',
+    highImpact: false,
+    schema: RetentionDays,
+    hint: 'days, 0–3650 (0 = keep)',
   },
 };
 

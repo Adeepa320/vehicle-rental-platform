@@ -82,5 +82,7 @@ import { AdminVehiclesController } from './admin-vehicles.controller';
     AdminReportsService,
     AdminOverviewService,
   ],
+  // The privacy module completes deletion requests through the same anonymisation (Phase 10).
+  exports: [AdminUsersService],
 })
 export class AdminModule {}

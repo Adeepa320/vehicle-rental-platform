@@ -1,6 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { UpdateProfileRequest } from '@vrp/contracts';
-import { users, type Database, type DatabaseExecutor, type User } from '@vrp/database';
+import {
+  refreshTokens,
+  userMfa,
+  users,
+  type Database,
+  type DatabaseExecutor,
+  type User,
+} from '@vrp/database';
 import { eq, sql } from 'drizzle-orm';
 
 import { ApiException } from '../../common/errors/api.exception';
@@ -22,6 +29,10 @@ export interface AuthUserRow {
   roles: User['roles'];
   status: User['status'];
   sessionsRevokedAt: Date | null;
+  /** A confirmed authenticator-app factor exists (Phase 10). */
+  mfaEnrolled: boolean;
+  /** The token's session (`sid`) still has a live refresh token (Phase 10, ASVS V7.4.1). */
+  sessionActive: boolean;
 }
 
 /** PostgreSQL unique-violation detection across Drizzle's error wrapping. */
@@ -48,7 +59,13 @@ export class UsersService {
     return user;
   }
 
-  async findAuthUserById(id: string): Promise<AuthUserRow | undefined> {
+  /**
+   * The guard's per-request lookup. `sessionActive` says whether the logical
+   * session the access token is bound to (`sid` = refresh-token family) still has
+   * a live refresh token: logout, logout-all, reuse detection, password change,
+   * suspension and anonymisation all revoke it, so its access tokens die at once.
+   */
+  async findAuthUserById(id: string, sessionId: string): Promise<AuthUserRow | undefined> {
     const [user] = await this.db
       .select({
         id: users.id,
@@ -56,8 +73,17 @@ export class UsersService {
         roles: users.roles,
         status: users.status,
         sessionsRevokedAt: users.sessionsRevokedAt,
+        mfaEnrolled: sql<boolean>`${userMfa.confirmedAt} is not null`,
+        sessionActive: sql<boolean>`exists (
+          select 1 from ${refreshTokens}
+          where ${refreshTokens.familyId} = ${sessionId}
+            and ${refreshTokens.userId} = ${users.id}
+            and ${refreshTokens.revokedAt} is null
+            and ${refreshTokens.expiresAt} > now()
+        )`,
       })
       .from(users)
+      .leftJoin(userMfa, eq(userMfa.userId, users.id))
       .where(eq(users.id, id))
       .limit(1);
     return user;
@@ -132,6 +158,26 @@ export class UsersService {
       .returning();
     if (!user) throw new ApiException('TOKEN_INVALID', 'This link is invalid', 400);
     return user;
+  }
+
+  /**
+   * Locks the user row (`FOR NO KEY UPDATE`, the lock session rotation and
+   * revocation serialise on) and returns the state a new session depends on.
+   */
+  async lockAuthState(
+    executor: DatabaseExecutor,
+    userId: string,
+  ): Promise<Pick<User, 'passwordHash' | 'status' | 'sessionsRevokedAt'> | undefined> {
+    const [row] = await executor
+      .select({
+        passwordHash: users.passwordHash,
+        status: users.status,
+        sessionsRevokedAt: users.sessionsRevokedAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for('no key update');
+    return row;
   }
 
   async revokeSessions(executor: DatabaseExecutor, userId: string): Promise<void> {

@@ -290,6 +290,8 @@ describe.skipIf(!url)('reports, search logs, audit viewer and overview (Phase 9)
       email: admin.email,
       roles: ['admin'],
       sessionId: 'reports-e2e',
+      mfaEnrolled: false,
+      mfaVerified: false,
     };
     const refund = (amount: string, reference: string, now: Date) =>
       service.recordRefund(

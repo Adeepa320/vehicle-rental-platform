@@ -64,7 +64,12 @@ export class VehiclePhotosController {
 
   @Post()
   @HttpCode(201)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_PHOTO_BYTES, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      // One file, no text fields: anything else is a malformed upload (DoS guard, Phase 10).
+      limits: { fileSize: MAX_PHOTO_BYTES, files: 1, fields: 2, parts: 3, fieldSize: 1024 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary:

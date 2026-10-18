@@ -96,7 +96,7 @@ export const CATEGORY_LICENSING_GUIDANCE: Record<string, CategoryLicensingGuidan
       {
         id: 'helmet',
         text: 'Helmets are mandatory for the rider and the pillion passenger.',
-        requiresConfirmation: false,
+        requiresConfirmation: true,
       },
     ],
   },
@@ -112,7 +112,7 @@ export const CATEGORY_LICENSING_GUIDANCE: Record<string, CategoryLicensingGuidan
       {
         id: 'scooter-helmet',
         text: 'Helmets are mandatory for the rider and the pillion passenger.',
-        requiresConfirmation: false,
+        requiresConfirmation: true,
       },
     ],
   },

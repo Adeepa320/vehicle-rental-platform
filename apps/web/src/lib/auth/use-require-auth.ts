@@ -14,17 +14,22 @@ export type RequireAuthState = 'loading' | 'forbidden' | 'ready';
  * enforces the real authorization; this only shapes the UI.
  */
 export function useRequireAuth(role?: UserRole): RequireAuthState {
-  const { status, user } = useAuth();
+  const { status, user, signedOutReason } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
+    if (status === 'anonymous' && signedOutReason === 'password_changed') {
+      // Every session was signed out by a password change: no return path, just the notice.
+      router.replace('/login?passwordChanged=1');
+      return;
+    }
     if (status === 'anonymous') {
       // Keep the query string (e.g. the chosen vehicle and dates) so the user lands back where they were.
       const search = typeof window === 'undefined' ? '' : window.location.search;
       router.replace(`/login?next=${encodeURIComponent(`${pathname}${search}`)}`);
     }
-  }, [pathname, router, status]);
+  }, [pathname, router, signedOutReason, status]);
 
   if (status !== 'authenticated' || !user) return 'loading';
   if (role && !user.roles.includes(role)) return 'forbidden';

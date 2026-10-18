@@ -37,6 +37,12 @@ export const refreshTokens = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    /**
+     * When this session family completed the second factor (Phase 10). Set on
+     * MFA challenge / recovery and carried over on rotation; NULL for sessions
+     * that only proved a password. Privileged routes require it.
+     */
+    mfaVerifiedAt: timestamp('mfa_verified_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

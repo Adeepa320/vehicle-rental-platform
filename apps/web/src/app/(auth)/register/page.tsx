@@ -149,7 +149,17 @@ export default function RegisterPage() {
               onCheckedChange={(checked) => setForm({ ...form, acceptTerms: checked === true })}
               aria-invalid={Boolean(errors.acceptTerms)}
             />
-            <span>I accept the terms of service and privacy policy.</span>
+            <span>
+              I accept the{' '}
+              <Link href="/terms" className="underline underline-offset-4" target="_blank">
+                Terms of Service
+              </Link>{' '}
+              and acknowledge the{' '}
+              <Link href="/privacy" className="underline underline-offset-4" target="_blank">
+                Privacy Notice
+              </Link>
+              .
+            </span>
           </label>
           {errors.acceptTerms ? (
             <p className="text-destructive text-xs" role="alert">

@@ -17,3 +17,5 @@ export * from './notifications';
 export * from './documents';
 export * from './disputes';
 export * from './search-logs';
+export * from './user-mfa';
+export * from './privacy-requests';

@@ -1,0 +1,30 @@
+# gitleaks configuration (Phase 10, SECURITY_AND_PRIVACY §14).
+# Run locally with Docker:
+#   docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:latest detect --source=/repo --redact
+# CI runs the same scan on every push (see .github/workflows/ci.yml).
+
+title = "vehicle-rental-platform"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and documented placeholders that are not credentials"
+paths = [
+  # Deterministic test fixtures: HMAC test secret and fake signed quote tokens (never valid against a real key).
+  '''apps/api/src/modules/bookings/booking-quote\.service\.test\.ts''',
+  '''apps/api/test/bookings\.e2e\.test\.ts''',
+  '''apps/web/src/lib/__tests__/api-client-bookings\.test\.ts''',
+  '''apps/web/src/lib/__tests__/booking-form\.test\.ts''',
+  '''packages/contracts/src/__tests__/booking\.test\.ts''',
+]
+regexes = [
+  # The commented PEM placeholder in .env.example ("-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----").
+  '''-----BEGIN PRIVATE KEY-----\\n\.\.\.\\n-----END PRIVATE KEY-----''',
+  # The documented local-only data-encryption key (refused in production by the env schema).
+  '''dnJwLWxvY2FsLWRldmVsb3BtZW50LWtleS0zMmJ5dGU=''',
+  # env.schema.test.ts: a syntactically shaped but truncated PEM ("MC4C" is not a key) for the production-rules fixture.
+  '''-----BEGIN PRIVATE KEY-----\\\\nMC4C\\\\n-----END PRIVATE KEY-----''',
+  # totp.test.ts: the published RFC 6238 Appendix B test secret (ASCII "12345678901234567890" in base32).
+  '''GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ''',
+]

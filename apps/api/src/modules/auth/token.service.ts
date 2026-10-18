@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UserRoleSchema } from '@vrp/contracts';
+import { AuthClientSchema, MFA_CHALLENGE_TTL_SECONDS, UserRoleSchema } from '@vrp/contracts';
 import {
   SignJWT,
   generateKeyPair,
@@ -25,8 +25,19 @@ const accessTokenClaimsSchema = z.object({
   roles: z.array(UserRoleSchema),
   iat: z.number().int(),
   exp: z.number().int(),
+  /** The session completed the second factor (set only by the server, Phase 10). */
+  mfa: z.boolean().optional(),
 });
 export type AccessTokenClaims = z.infer<typeof accessTokenClaimsSchema>;
+
+const MFA_CHALLENGE_PURPOSE = 'mfa';
+const mfaChallengeClaimsSchema = z.object({
+  sub: z.uuid(),
+  purpose: z.literal(MFA_CHALLENGE_PURPOSE),
+  client: AuthClientSchema,
+  iat: z.number().int(),
+});
+export type MfaChallengeClaims = z.infer<typeof mfaChallengeClaimsSchema>;
 
 type Key = CryptoKey | KeyObject;
 
@@ -76,9 +87,14 @@ export class TokenService implements OnModuleInit {
     id: string;
     roles: string[];
     sessionId: string;
+    mfaVerified?: boolean;
   }): Promise<{ token: string; expiresIn: number }> {
     const now = Math.floor(Date.now() / 1000);
-    const token = await new SignJWT({ roles: user.roles, sid: user.sessionId })
+    const token = await new SignJWT({
+      roles: user.roles,
+      sid: user.sessionId,
+      mfa: user.mfaVerified === true,
+    })
       .setProtectedHeader({ alg: ALGORITHM, typ: 'JWT' })
       .setSubject(user.id)
       .setIssuer(this.issuer)
@@ -98,6 +114,38 @@ export class TokenService implements OnModuleInit {
       algorithms: [ALGORITHM],
     });
     return accessTokenClaimsSchema.parse(payload);
+  }
+
+  /**
+   * Short-lived proof that a password was just verified for an MFA-enrolled
+   * account (Phase 10). A separate audience keeps it from ever passing as an
+   * access token; it carries the client so the finished login sets the right
+   * refresh-token delivery.
+   */
+  async signMfaChallenge(input: {
+    userId: string;
+    client: 'web' | 'mobile';
+  }): Promise<{ token: string; expiresIn: number }> {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await new SignJWT({ purpose: MFA_CHALLENGE_PURPOSE, client: input.client })
+      .setProtectedHeader({ alg: ALGORITHM, typ: 'JWT' })
+      .setSubject(input.userId)
+      .setIssuer(this.issuer)
+      .setAudience(`${this.audience}:mfa`)
+      .setIssuedAt(now)
+      .setExpirationTime(now + MFA_CHALLENGE_TTL_SECONDS)
+      .setJti(randomUUID())
+      .sign(this.privateKey);
+    return { token, expiresIn: MFA_CHALLENGE_TTL_SECONDS };
+  }
+
+  async verifyMfaChallenge(token: string): Promise<MfaChallengeClaims> {
+    const { payload } = await jwtVerify(token, this.publicKey, {
+      issuer: this.issuer,
+      audience: `${this.audience}:mfa`,
+      algorithms: [ALGORITHM],
+    });
+    return mfaChallengeClaimsSchema.parse(payload);
   }
 }
 

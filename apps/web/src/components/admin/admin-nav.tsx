@@ -15,17 +15,19 @@ const LINKS = [
   { href: '/admin/reviews', label: 'Reviews' },
   { href: '/admin/disputes', label: 'Disputes' },
   { href: '/admin/documents', label: 'Documents' },
+  { href: '/admin/privacy-requests', label: 'Privacy requests' },
   { href: '/admin/reports', label: 'Reports' },
   { href: '/admin/reference', label: 'Reference' },
   { href: '/admin/settings', label: 'Settings' },
   { href: '/admin/audit', label: 'Audit log' },
+  { href: '/admin/system', label: 'System' },
 ];
 
 /** Sub-navigation for the admin area. */
 export function AdminNav() {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-wrap gap-2">
+    <nav aria-label="Admin sections" className="flex flex-wrap gap-2">
       {LINKS.map((link) => {
         const active =
           link.href === '/admin'
@@ -37,7 +39,7 @@ export function AdminNav() {
             size="sm"
             variant={active ? 'default' : 'outline'}
             nativeButton={false}
-            render={<Link href={link.href} />}
+            render={<Link href={link.href} aria-current={active ? 'page' : undefined} />}
           >
             {link.label}
           </Button>

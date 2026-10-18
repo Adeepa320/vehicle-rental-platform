@@ -9,9 +9,10 @@ import { TokenService } from '../token.service';
 
 /**
  * Global guard. Routes are protected by default; `@Public()` opts out.
- * Verifies the bearer JWT, then loads the user so suspension, deletion and
- * `sessions_revoked_at` (logout-all / password reset) take effect immediately
- * instead of after the access token expires.
+ * Verifies the bearer JWT, then loads the user and the token's session so
+ * suspension, deletion, `sessions_revoked_at` (logout-all / password reset or
+ * change) and a single-session logout take effect immediately instead of after
+ * the access token expires.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -40,7 +41,7 @@ export class JwtAuthGuard implements CanActivate {
         throw new ApiException('UNAUTHENTICATED', 'Invalid or expired access token', 401);
       });
 
-    const user = await this.users.findAuthUserById(claims.sub);
+    const user = await this.users.findAuthUserById(claims.sub, claims.sid);
     if (!user || user.status === 'deleted') {
       throw new ApiException('UNAUTHENTICATED', 'Invalid or expired access token', 401);
     }
@@ -53,12 +54,21 @@ export class JwtAuthGuard implements CanActivate {
     ) {
       throw new ApiException('UNAUTHENTICATED', 'Session has been revoked', 401);
     }
+    // Every access token is bound to one logical session (`sid`, the refresh-token
+    // family). Once that session is revoked or unknown its tokens stop working now,
+    // not at expiry; other sessions of the same user are untouched (ASVS V7.4.1).
+    if (!user.sessionActive) {
+      throw new ApiException('UNAUTHENTICATED', 'Session has been revoked', 401);
+    }
 
     request.user = {
       id: user.id,
       email: user.email,
       roles: user.roles,
       sessionId: claims.sid,
+      mfaEnrolled: user.mfaEnrolled,
+      // The claim is server-set at issue time; it only counts while a factor is actually enrolled.
+      mfaVerified: claims.mfa === true && user.mfaEnrolled,
     };
     return true;
   }

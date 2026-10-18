@@ -76,7 +76,12 @@ export class ProviderDocumentsController {
 
   @Post()
   @HttpCode(201)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      // One file plus the small metadata fields of UploadDocumentFieldsSchema (DoS guard, Phase 10).
+      limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1, fields: 8, parts: 9, fieldSize: 2048 },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary:

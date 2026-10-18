@@ -4,6 +4,8 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 
 // Config first: it loads `.env` at import time and later imports read process.env.
+import { DataEncryptionModule } from './common/crypto/data-encryption.module';
+import { ObservabilityModule } from './common/observability/observability.module';
 import { AppConfigModule } from './config/config.module';
 import type { Env } from './config/env.schema';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -21,10 +23,13 @@ import { DisputesModule } from './modules/disputes/disputes.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { MfaGuard } from './modules/auth/mfa/mfa.guard';
 import { EmailModule } from './modules/notifications/email/email.module';
 import { NotificationsModule } from './modules/notifications/inapp/notifications.module';
 import { RemindersModule } from './modules/notifications/reminders/reminders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { PrivacyModule } from './modules/privacy/privacy.module';
+import { RetentionModule } from './modules/retention/retention.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { ReferenceModule } from './modules/reference/reference.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -44,6 +49,8 @@ import { UsersModule } from './modules/users/users.module';
   imports: [
     AppConfigModule,
     AppLoggerModule,
+    DataEncryptionModule,
+    ObservabilityModule,
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({
@@ -73,6 +80,8 @@ import { UsersModule } from './modules/users/users.module';
     DiscoveryModule,
     BookingsModule,
     PaymentsModule,
+    PrivacyModule,
+    RetentionModule,
     ReviewsModule,
     DocumentsModule,
     DisputesModule,
@@ -82,6 +91,7 @@ import { UsersModule } from './modules/users/users.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: MfaGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

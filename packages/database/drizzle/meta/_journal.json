@@ -141,6 +141,20 @@
       "when": 1792070353063,
       "tag": "0019_admin_operations_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792218482725,
+      "tag": "0020_production_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792218501023,
+      "tag": "0021_production_readiness_triggers",
+      "breakpoints": true
     }
   ]
 }

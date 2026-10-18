@@ -55,6 +55,30 @@ export function toErrorResponse(exception: unknown, requestId?: string): ErrorRe
     return { status, body: { error: { code, message, ...(requestId ? { requestId } : {}) } } };
   }
 
+  // body-parser / raw-body errors (oversized or malformed bodies) are plain errors with a
+  // 4xx status and a type such as 'entity.too.large'; they are the client's fault, not ours.
+  const raw = exception as { status?: unknown; statusCode?: unknown; type?: unknown };
+  const rawStatus =
+    typeof raw.status === 'number'
+      ? raw.status
+      : typeof raw.statusCode === 'number'
+        ? raw.statusCode
+        : undefined;
+  if (
+    rawStatus !== undefined &&
+    rawStatus >= 400 &&
+    rawStatus < 500 &&
+    typeof raw.type === 'string'
+  ) {
+    const code = STATUS_TO_CODE[rawStatus] ?? 'VALIDATION_ERROR';
+    const message =
+      rawStatus === 413 ? 'Request body is too large' : 'Request body could not be parsed';
+    return {
+      status: rawStatus,
+      body: { error: { code, message, ...(requestId ? { requestId } : {}) } },
+    };
+  }
+
   return {
     status: 500,
     body: {

@@ -5,6 +5,7 @@ import {
   AuthSessionResponseSchema,
   ForgotPasswordRequestSchema,
   LoginRequestSchema,
+  LoginResponseSchema,
   MessageResponseSchema,
   RefreshRequestSchema,
   RegisterRequestSchema,
@@ -16,6 +17,7 @@ import {
   type AuthSessionResponse,
   type ForgotPasswordRequest,
   type LoginRequest,
+  type LoginResponse,
   type MessageResponse,
   type RefreshRequest,
   type RegisterRequest,
@@ -31,22 +33,26 @@ import { ApiException } from '../../common/errors/api.exception';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { Env } from '../../config/env.schema';
 import { ApiZodBody, ApiZodResponse } from '../../openapi/zod-openapi';
-import { REFRESH_COOKIE, clearRefreshCookie, setRefreshCookie } from './auth-cookies';
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from './auth-cookies';
 import { AuthThrottle } from './auth-throttle';
 import { AuthService, type SessionResult } from './auth.service';
 import { requestMeta, type AuthenticatedUser } from './auth.types';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { MfaExempt } from './decorators/mfa-exempt.decorator';
 import { Public } from './decorators/public.decorator';
 import { OriginGuard } from './guards/origin.guard';
+import { TokenService } from './token.service';
 
 const VERIFICATION_SENT = 'If an account exists for this email, a verification link has been sent.';
 const RESET_SENT = 'If an account exists for this email, a password reset link has been sent.';
 
 @ApiTags('auth')
+@MfaExempt()
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly tokens: TokenService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -72,13 +78,23 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Log in with e-mail and password' })
   @ApiZodBody(LoginRequestSchema)
-  @ApiZodResponse(200, AuthSessionResponseSchema)
+  @ApiZodResponse(200, LoginResponseSchema)
   async login(
     @Body(new ZodValidationPipe(LoginRequestSchema)) body: LoginRequest,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<AuthSessionResponse> {
-    return this.respondWithSession(response, await this.auth.login(body, requestMeta(request)));
+  ): Promise<LoginResponse> {
+    const result = await this.auth.login(body, requestMeta(request));
+    if ('mfaRequired' in result) {
+      // No cookie, no tokens: the client finishes with POST /auth/mfa/challenge or /recovery.
+      return {
+        mfaRequired: true,
+        challengeToken: result.challengeToken,
+        expiresIn: result.expiresIn,
+        methods: ['totp', 'recovery_code'],
+      };
+    }
+    return this.respondWithSession(response, result);
   }
 
   @Public()
@@ -115,14 +131,20 @@ export class AuthController {
   @AuthThrottle('refresh')
   @Post('logout')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Revoke the current session (refresh token) and clear the cookie' })
+  @ApiOperation({
+    summary:
+      'End the current session: revokes its refresh-token family (and the session of a valid bearer token, if sent) so its access tokens stop working at once; other sessions stay signed in',
+  })
   @ApiZodBody(RefreshRequestSchema)
   async logout(
     @Body(new ZodValidationPipe(RefreshRequestSchema)) body: RefreshRequest,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
-    await this.auth.logout(body.refreshToken ?? readRefreshCookie(request));
+    await this.auth.logout(
+      body.refreshToken ?? readRefreshCookie(request),
+      await this.bearerSession(request),
+    );
     clearRefreshCookie(response, this.config);
   }
 
@@ -198,6 +220,22 @@ export class AuthController {
     return { message: 'Your password has been updated. Please sign in with your new password.' };
   }
 
+  /**
+   * Logout stays `@Public()` (an expired access token must not prevent it); a
+   * bearer token that does verify names the session it is bound to. Server-signed
+   * claims only — the client never submits a session id.
+   */
+  private async bearerSession(
+    request: Request,
+  ): Promise<{ userId: string; familyId: string } | undefined> {
+    const header = request.headers.authorization;
+    if (typeof header !== 'string' || !header.startsWith('Bearer ')) return undefined;
+    const claims = await this.tokens
+      .verifyAccessToken(header.slice('Bearer '.length).trim())
+      .catch(() => undefined);
+    return claims ? { userId: claims.sub, familyId: claims.sid } : undefined;
+  }
+
   private respondWithSession(response: Response, result: SessionResult): AuthSessionResponse {
     if (result.client === 'web') {
       setRefreshCookie(
@@ -209,10 +247,4 @@ export class AuthController {
     }
     return result.session;
   }
-}
-
-function readRefreshCookie(request: Request): string | undefined {
-  const cookies = (request as Request & { cookies?: Record<string, unknown> }).cookies;
-  const value = cookies?.[REFRESH_COOKIE];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

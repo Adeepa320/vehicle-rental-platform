@@ -60,7 +60,9 @@ export default function CustomerBookingPage() {
   if (gate !== 'ready' || !booking) {
     return (
       <main className="mx-auto w-full max-w-4xl px-4 py-12">
-        <p className="text-muted-foreground text-sm">Loading booking…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Loading booking…
+        </p>
       </main>
     );
   }
@@ -77,7 +79,7 @@ export default function CustomerBookingPage() {
       <header className="grid gap-4 sm:grid-cols-[200px_1fr]">
         <Photo
           src={booking.vehicle.thumbnailUrl}
-          alt={booking.vehicle.title}
+          alt={`${booking.vehicle.title} – photo 1`}
           className="aspect-[4/3]"
           sizes="200px"
         />

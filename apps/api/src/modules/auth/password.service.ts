@@ -1,15 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@vrp/contracts';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, isCommonPassword } from '@vrp/contracts';
 import * as argon2 from 'argon2';
 
 import type { Env } from '../../config/env.schema';
 
 /**
- * Short deny-list of extremely common passwords that still satisfy the length
- * rule. A breached-password (k-anonymity) check is scheduled for Phase 10.
+ * Local additions to the SecLists top-3,000 check (`isCommonPassword`, ASVS 5.0
+ * V6.2.4): common passwords that satisfy the length rule plus Sri Lanka-flavoured
+ * guesses. A breached-password (k-anonymity) check remains a post-launch option
+ * (SECURITY_AND_PRIVACY §2.4).
  */
-const COMMON_PASSWORDS = new Set([
+const LOCAL_COMMON_PASSWORDS = new Set([
   '1234567890',
   '12345678910',
   'password12',
@@ -76,11 +78,12 @@ export class PasswordService {
       return `must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`;
     }
     const lower = password.toLowerCase();
-    if (COMMON_PASSWORDS.has(lower)) {
-      return 'is too common; choose something harder to guess';
-    }
+    // Most specific reason first: a run of one character is also on the common list.
     if (/^(.)\1+$/.test(password)) {
       return 'must not repeat a single character';
+    }
+    if (isCommonPassword(password) || LOCAL_COMMON_PASSWORDS.has(lower)) {
+      return 'is too common; choose something harder to guess';
     }
     const localPart = context.email?.split('@')[0]?.toLowerCase();
     if (localPart && localPart.length >= 4 && lower.includes(localPart)) {

@@ -8,7 +8,16 @@ import {
   AdminDocumentSchema,
   AdminOverviewSchema,
   AdminPlaceSchema,
+  AdminPrivacyRequestListSchema,
+  AdminPrivacyRequestSchema,
   AdminSettingsResponseSchema,
+  LoginResponseSchema,
+  MfaEnrolConfirmResponseSchema,
+  MfaEnrolStartResponseSchema,
+  MfaRecoveryCodesSchema,
+  MfaStatusSchema,
+  PrivacyRequestListSchema,
+  PrivacyRequestSchema,
   AdminUserDetailSchema,
   AdminUserListSchema,
   AdminVehicleCategorySchema,
@@ -79,6 +88,7 @@ import {
   type AdminBookingList,
   type AdminCancelBookingRequest,
   type AdminCancellationActor,
+  type AdminCreatePrivacyRequest,
   type AdminDispute,
   type AdminDisputeList,
   type AdminDistrict,
@@ -86,7 +96,28 @@ import {
   type AdminDocumentList,
   type AdminOverview,
   type AdminPlace,
+  type AdminPrivacyRequest,
+  type AdminPrivacyRequestCompleteAccess,
+  type AdminPrivacyRequestCompleteDeletion,
+  type AdminPrivacyRequestList,
+  type AdminPrivacyRequestNote,
+  type AdminPrivacyRequestReject,
   type AdminSettingsResponse,
+  type CreateDeletionRequest,
+  type LoginResponse,
+  type MfaChallengeRequest,
+  type MfaEnrolConfirmRequest,
+  type MfaEnrolConfirmResponse,
+  type MfaEnrolStartRequest,
+  type MfaEnrolStartResponse,
+  type MfaRecoveryCodes,
+  type MfaRecoveryRequest,
+  type MfaStatus,
+  type MfaStepUpRequest,
+  type PrivacyRequest,
+  type PrivacyRequestList,
+  type PrivacyRequestStatus,
+  type PrivacyRequestType,
   type AdminUserDetail,
   type AdminUserList,
   type AdminVehicleCategory,
@@ -190,6 +221,7 @@ import {
   type RegisterResponse,
   type ResolvePaymentRequest,
   type UpdateProfileRequest,
+  type ChangePasswordRequest,
   type UpdateProviderLocationRequest,
   type UpdateProviderProfileRequest,
   type UpdateVehicleRequest,
@@ -205,6 +237,8 @@ import {
   type VerifyEmailResponse,
 } from '@vrp/contracts';
 import { z, type ZodType } from 'zod';
+
+import { WorkerStatusSchema, type WorkerStatus } from './system/worker-status';
 
 /** Thrown when the API answers with its error envelope or an unexpected shape. */
 export class ApiClientError extends Error {
@@ -360,8 +394,23 @@ export function createApiClient(options: ApiClientOptions) {
     auth: {
       register: (body: RegisterRequest): Promise<RegisterResponse> =>
         request('/auth/register', RegisterResponseSchema, { method: 'POST', body }),
-      login: (body: LoginRequest): Promise<AuthSessionResponse> =>
-        request('/auth/login', AuthSessionResponseSchema, {
+      /** A session, or an MFA challenge (no cookie yet) for accounts with an authenticator. */
+      login: (body: LoginRequest): Promise<LoginResponse> =>
+        request('/auth/login', LoginResponseSchema, {
+          method: 'POST',
+          body,
+          withCredentials: true,
+        }),
+      /** Second login step with an authenticator code; sets the refresh cookie on success. */
+      mfaChallenge: (body: MfaChallengeRequest): Promise<AuthSessionResponse> =>
+        request('/auth/mfa/challenge', AuthSessionResponseSchema, {
+          method: 'POST',
+          body,
+          withCredentials: true,
+        }),
+      /** Second login step with a one-time recovery code. */
+      mfaRecovery: (body: MfaRecoveryRequest): Promise<AuthSessionResponse> =>
+        request('/auth/mfa/recovery', AuthSessionResponseSchema, {
           method: 'POST',
           body,
           withCredentials: true,
@@ -406,11 +455,75 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
 
+    /** Authenticator-app second factor of the signed-in account (TECH_DECISIONS D67). */
+    mfa: {
+      status: (accessToken: string): Promise<MfaStatus> =>
+        request('/auth/mfa', MfaStatusSchema, withToken(accessToken)),
+      /** The secret and otpauth URI are returned exactly once. */
+      enrolStart: (
+        accessToken: string,
+        body: MfaEnrolStartRequest,
+      ): Promise<MfaEnrolStartResponse> =>
+        request('/auth/mfa/enrol/start', MfaEnrolStartResponseSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** Recovery codes (shown once) plus an upgraded access token for the current session. */
+      enrolConfirm: (
+        accessToken: string,
+        body: MfaEnrolConfirmRequest,
+      ): Promise<MfaEnrolConfirmResponse> =>
+        request('/auth/mfa/enrol/confirm', MfaEnrolConfirmResponseSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      disable: (accessToken: string, body: MfaStepUpRequest): Promise<void> =>
+        request('/auth/mfa/disable', NoContentSchema, { method: 'POST', body, accessToken }),
+      /** Replaces every previous recovery code. */
+      regenerateRecoveryCodes: (
+        accessToken: string,
+        body: MfaStepUpRequest,
+      ): Promise<MfaRecoveryCodes> =>
+        request('/auth/mfa/recovery-codes', MfaRecoveryCodesSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+    },
+
     users: {
       me: (accessToken: string): Promise<User> =>
         request('/users/me', UserSchema, withToken(accessToken)),
       updateMe: (accessToken: string, body: UpdateProfileRequest): Promise<User> =>
         request('/users/me', UserSchema, { method: 'PATCH', body, accessToken }),
+      /**
+       * Signed-in password change (204). The server signs out every session, this one
+       * included, and clears the refresh cookie (hence the credentials).
+       */
+      changePassword: (accessToken: string, body: ChangePasswordRequest): Promise<void> =>
+        request('/users/me/password', NoContentSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+          withCredentials: true,
+        }),
+      /** The allow-listed personal-data export as a JSON file (TECH_DECISIONS D69). */
+      exportData: (accessToken: string): Promise<Blob> =>
+        fetchBlob('/users/me/export', accessToken),
+      /** Opens a deletion request (202); the operator completes it through anonymisation. */
+      requestDeletion: (
+        accessToken: string,
+        body: CreateDeletionRequest,
+      ): Promise<PrivacyRequest> =>
+        request('/users/me/delete-request', PrivacyRequestSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      privacyRequests: (accessToken: string): Promise<PrivacyRequestList> =>
+        request('/users/me/privacy-requests', PrivacyRequestListSchema, withToken(accessToken)),
     },
 
     reference: {
@@ -1331,6 +1444,85 @@ export function createApiClient(options: ApiClientOptions) {
         request('/admin/reports/providers', ProviderReportSchema, withToken(accessToken)),
       reportCsv: (accessToken: string, name: ReportCsvName, query?: ReportQuery): Promise<Blob> =>
         fetchBlob(`/admin/reports/${name}.csv`, accessToken, query),
+
+      /** Data-subject requests (access / deletion); decisions are audited server-side. */
+      listPrivacyRequests: (
+        accessToken: string,
+        query: {
+          status?: PrivacyRequestStatus;
+          type?: PrivacyRequestType;
+          userId?: string;
+          cursor?: string;
+          limit?: number;
+        } = {},
+      ): Promise<AdminPrivacyRequestList> =>
+        request('/admin/privacy-requests', AdminPrivacyRequestListSchema, { accessToken, query }),
+      /** Records a request received outside the product (e-mail, phone) on the user's behalf. */
+      createPrivacyRequest: (
+        accessToken: string,
+        body: AdminCreatePrivacyRequest,
+      ): Promise<AdminPrivacyRequest> =>
+        request('/admin/privacy-requests', AdminPrivacyRequestSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      getPrivacyRequest: (accessToken: string, id: string): Promise<AdminPrivacyRequest> =>
+        request(`/admin/privacy-requests/${id}`, AdminPrivacyRequestSchema, withToken(accessToken)),
+      startPrivacyRequestReview: (accessToken: string, id: string): Promise<AdminPrivacyRequest> =>
+        request(`/admin/privacy-requests/${id}/start-review`, AdminPrivacyRequestSchema, {
+          method: 'POST',
+          body: {},
+          accessToken,
+        }),
+      setPrivacyRequestInternalNote: (
+        accessToken: string,
+        id: string,
+        body: AdminPrivacyRequestNote,
+      ): Promise<AdminPrivacyRequest> =>
+        request(`/admin/privacy-requests/${id}/internal-note`, AdminPrivacyRequestSchema, {
+          method: 'PUT',
+          body,
+          accessToken,
+        }),
+      completePrivacyAccessRequest: (
+        accessToken: string,
+        id: string,
+        body: AdminPrivacyRequestCompleteAccess,
+      ): Promise<AdminPrivacyRequest> =>
+        request(`/admin/privacy-requests/${id}/complete-access`, AdminPrivacyRequestSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** Irreversible: runs the Phase 9 anonymisation with the same e-mail confirmation. */
+      completePrivacyDeletionRequest: (
+        accessToken: string,
+        id: string,
+        body: AdminPrivacyRequestCompleteDeletion,
+      ): Promise<AdminPrivacyRequest> =>
+        request(`/admin/privacy-requests/${id}/complete-deletion`, AdminPrivacyRequestSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      rejectPrivacyRequest: (
+        accessToken: string,
+        id: string,
+        body: AdminPrivacyRequestReject,
+      ): Promise<AdminPrivacyRequest> =>
+        request(`/admin/privacy-requests/${id}/reject`, AdminPrivacyRequestSchema, {
+          method: 'POST',
+          body,
+          accessToken,
+        }),
+      /** The subject's data export for an access request (JSON; audited server-side). */
+      privacyRequestExport: (accessToken: string, id: string): Promise<Blob> =>
+        fetchBlob(`/admin/privacy-requests/${id}/export`, accessToken),
+
+      /** Background worker health: schedules and queue counters (read-only). */
+      systemWorker: (accessToken: string): Promise<WorkerStatus> =>
+        request('/admin/system/worker', WorkerStatusSchema, withToken(accessToken)),
     },
   };
 }

@@ -1,5 +1,7 @@
 # Continuous integration: install, lint, typecheck, migrate + seed against a
-# throwaway PostGIS service, test, build. No deployment and no secrets required.
+# throwaway PostGIS service, test, build, format check, dependency audit and
+# secret scan; a second job proves the production container images build.
+# No deployment and no secrets required (SECURITY_AND_PRIVACY §14).
 name: CI
 
 on:
@@ -11,11 +13,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -39,6 +44,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan covers every commit, not only the checkout.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         # Reads the pnpm version from the "packageManager" field in package.json.
@@ -71,3 +79,51 @@ jobs:
 
       - name: Format check
         run: pnpm format:check
+
+      - name: Legal texts in sync with their source
+        run: pnpm legal:render && git diff --exit-code -- docs/legal
+
+      - name: Dependency audit (production dependencies, high and critical)
+        run: pnpm audit --prod --audit-level high
+
+      - name: Secret scan (gitleaks, full history, .gitleaks.toml allow-list)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+          GITLEAKS_ENABLE_SUMMARY: 'true'
+
+  images:
+    name: Container images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API / worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: vrp-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build the web image (placeholder public URLs; real values are build arguments per environment)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          tags: vrp-web:ci
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.example.invalid/api/v1
+            NEXT_PUBLIC_WEB_URL=https://app.example.invalid
+            NEXT_PUBLIC_IMAGE_ORIGINS=https://img.example.invalid
+            NEXT_PUBLIC_MAP_ORIGINS=https://tiles.openfreemap.org
+            NEXT_PUBLIC_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
+            NEXT_PUBLIC_SUPPORT_EMAIL=support@example.invalid
+            NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL=privacy@example.invalid
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

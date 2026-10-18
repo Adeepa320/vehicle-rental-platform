@@ -7,6 +7,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { PgBoss, fromDrizzle, type Job, type WorkOptions } from 'pg-boss';
 
 import type { Env } from '../config/env.schema';
+import { ErrorReporter } from '../common/observability/error-reporter';
 import { QUEUE_DEFINITIONS, type QueueName } from './queues';
 
 export interface SendJobOptions {
@@ -38,6 +39,8 @@ export class JobsService implements OnApplicationShutdown {
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly logger: PinoLogger,
+
+    private readonly reporter: ErrorReporter,
   ) {
     this.logger.setContext(JobsService.name);
   }
@@ -96,7 +99,13 @@ export class JobsService implements OnApplicationShutdown {
     handler: JobHandler<T>,
   ): Promise<void> {
     await this.queue.work<T>(name, options, async (jobs) => {
-      await handler(jobs);
+      try {
+        await handler(jobs);
+      } catch (error) {
+        // pg-boss retries per the queue options; the failure is also reported (no-op without a DSN).
+        this.reporter.capture(error, { job: name });
+        throw error;
+      }
     });
     this.handlers.add(name);
     this.logger.info({ queue: name }, 'Job handler registered');

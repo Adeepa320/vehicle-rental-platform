@@ -1,0 +1,22 @@
+# Build context hygiene for apps/api/Dockerfile and apps/web/Dockerfile (Phase 10).
+# Secrets and local state never enter an image; dependencies are installed inside the build.
+.git
+.github
+.turbo
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.log
+.env
+.env.*
+!.env.example
+apps/web/.env*
+!apps/web/.env.example
+docs
+infra
+*.md
+!apps/**/*.md
+# Incremental build state must never enter the image: with dist excluded, a stale
+# tsbuildinfo makes tsc skip emitting files it believes are up to date.
+**/*.tsbuildinfo

@@ -24,6 +24,7 @@ export const ApiErrorCodeSchema = z.enum([
   'TOKEN_INVALID',
   'TOKEN_EXPIRED',
   'REFRESH_INVALID',
+  'CURRENT_PASSWORD_INVALID',
   // providers
   'INVALID_STATE_TRANSITION',
   'PROVIDER_SUSPENDED',
@@ -54,6 +55,14 @@ export const ApiErrorCodeSchema = z.enum([
   'DISPUTE_ALREADY_EXISTS',
   'SETTING_STALE',
   'SETTING_MONEY_MODEL_UNSUPPORTED',
+  // Phase 10 — admin MFA and privacy requests
+  'MFA_REQUIRED',
+  'MFA_CHALLENGE_INVALID',
+  'MFA_CODE_INVALID',
+  'MFA_LOCKED',
+  'MFA_ALREADY_ENROLLED',
+  'MFA_NOT_ENROLLED',
+  'PRIVACY_REQUEST_ALREADY_OPEN',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
 

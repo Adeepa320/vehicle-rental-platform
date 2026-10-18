@@ -49,6 +49,8 @@ export const users = pgTable(
     countryCode: char('country_code', { length: 2 }),
     termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true }),
     termsVersion: text('terms_version'),
+    /** Version of the privacy notice acknowledged at registration (Phase 10); NULL for older accounts. */
+    privacyVersion: text('privacy_version'),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     /**
      * Access tokens issued before this instant are rejected by the auth guard.

@@ -15,7 +15,15 @@
     "test": "vitest run",
     "keys:generate": "node scripts/generate-jwt-keys.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "admin:grant": "tsx src/cli/grant-admin.ts"
+    "admin:grant": "tsx src/cli/grant-admin.ts",
+    "admin:mfa-report": "tsx src/cli/mfa-report.ts",
+    "admin:mfa-reset": "tsx src/cli/mfa-reset.ts",
+    "production:check": "tsx src/cli/production-check.ts",
+    "retention:preview": "node dist/cli/retention-preview.js",
+    "supply:report": "tsx src/cli/supply-report.ts",
+    "perf:seed": "tsx scripts/perf/seed-perf.ts",
+    "perf:load": "node scripts/perf/loadgen.mjs",
+    "perf:explain": "node scripts/perf/explain.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1145.0",

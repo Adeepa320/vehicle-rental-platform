@@ -1,4 +1,5 @@
 import type { PlaceSummary } from '@vrp/contracts';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { SearchForm } from '@/components/public/search-form';
@@ -7,9 +8,20 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { createApiClient } from '@/lib/api-client';
 import { serverEnv } from '@/lib/env';
 import { searchHref } from '@/lib/search-params';
+import { SITE_DESCRIPTION, SITE_NAME, publicPageMetadata } from '@/lib/seo';
 
 // Quick picks come from the live gazetteer; never a stale render.
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  ...publicPageMetadata({
+    title: `${SITE_NAME} – rent cars, vans, SUVs and bikes on Sri Lanka’s South Coast`,
+    description: SITE_DESCRIPTION,
+    path: '/',
+  }),
+  // The home page carries the site name itself; skip the "· Vehicle Rental Platform" template.
+  title: { absolute: `${SITE_NAME} – rent cars, vans, SUVs and bikes on Sri Lanka’s South Coast` },
+};
 
 const VALUE_PROPS = [
   {

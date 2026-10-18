@@ -4,6 +4,7 @@ import { UpdateProfileRequestSchema, type UpdateProfileRequest, type User } from
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 
+import { AccountNav } from '@/components/account/account-nav';
 import { AuthCard, FormField, FormMessage } from '@/components/auth/form-primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,9 @@ export default function AccountPage() {
   if (status !== 'authenticated' || !user) {
     return (
       <main className="mx-auto w-full max-w-2xl px-4 py-12">
-        <p className="text-muted-foreground text-sm">Loading your account…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Loading your account…
+        </p>
       </main>
     );
   }
@@ -93,6 +96,7 @@ function AccountView({ user }: { user: User }) {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-12">
+      <AccountNav />
       <AuthCard title="Your account" description={user.email}>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Badge variant={user.emailVerified ? 'default' : 'destructive'}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,12 +29,14 @@ export function ReasonAction({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
 
   if (!open) {
     return (
       <Button
         variant={variant === 'destructive' ? 'outline' : variant}
         size="sm"
+        aria-expanded={false}
         onClick={() => setOpen(true)}
       >
         {label}
@@ -47,10 +49,17 @@ export function ReasonAction({
       <Textarea
         value={text}
         placeholder={placeholder}
+        aria-label={`${label}: ${optional ? 'optional note' : 'reason (required)'}`}
         onChange={(e) => setText(e.target.value)}
         aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        autoFocus
       />
-      {error ? <p className="text-destructive text-xs">{error}</p> : null}
+      {error ? (
+        <p id={errorId} className="text-destructive text-xs" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="flex gap-2">
         <Button
           size="sm"

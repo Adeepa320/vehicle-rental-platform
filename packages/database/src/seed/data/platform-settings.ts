@@ -110,4 +110,28 @@ export const PLATFORM_SETTINGS: NewPlatformSetting[] = [
     description:
       'Days after completion, no-show or cancellation during which a booking participant may open a dispute (Phase 9, PRD FR-T4).',
   },
+  {
+    key: 'document_retention_rejected_days',
+    value: 30,
+    description:
+      'Days a rejected verification document and its file are kept before the retention sweep deletes them; 0 keeps forever (Phase 10, pending legal review).',
+  },
+  {
+    key: 'document_retention_superseded_days',
+    value: 90,
+    description:
+      'Days a superseded verification document and its file are kept after replacement; 0 keeps forever (Phase 10, pending legal review).',
+  },
+  {
+    key: 'driver_snapshot_retention_days',
+    value: 0,
+    description:
+      'Days after a booking finishes before its driver snapshot is purged; 0 disables the purge until legal review confirms the period (Phase 10).',
+  },
+  {
+    key: 'search_log_retention_days',
+    value: 400,
+    description:
+      'Days anonymous search logs are kept for demand reports; 0 keeps forever (Phase 10).',
+  },
 ];

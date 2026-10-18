@@ -82,6 +82,17 @@ export const ResetPasswordRequestSchema = z.strictObject({
 });
 export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
 
+/**
+ * Signed-in password change (`POST /users/me/password`, Phase 10, ASVS V6.2.3).
+ * The caller comes from the access token; the new password goes through the
+ * same policy as registration and reset. Success signs out every session.
+ */
+export const ChangePasswordRequestSchema = z.strictObject({
+  currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH),
+  newPassword: PasswordSchema,
+});
+export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequestSchema>;
+
 /** Generic acknowledgement for enumeration-safe endpoints. */
 export const MessageResponseSchema = z.object({ message: z.string() });
 export type MessageResponse = z.infer<typeof MessageResponseSchema>;

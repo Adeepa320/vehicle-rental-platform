@@ -42,14 +42,19 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
     ? 'Verified provider'
     : 'Platform-approved provider';
   const description = `${vehicle.make} ${vehicle.model} ${vehicle.modelYear} for rent in ${vehicle.place.name}, ${vehicle.place.districtName} from ${formatLkr(vehicle.pricing.dailyRate)} per day. ${providerWording} ${vehicle.provider.displayName}. Deposit ${formatLkr(vehicle.pricing.securityDeposit)}.`;
+  // Town-level wording only: no addresses, coordinates or availability in metadata.
   return {
     title: `${vehicle.title} – rent in ${vehicle.place.name}`,
     description,
     alternates: { canonical: `/vehicles/${vehicle.slug}` },
     openGraph: {
+      type: 'website',
+      url: `/vehicles/${vehicle.slug}`,
       title: vehicle.title,
       description,
-      images: vehicle.photos[0] ? [{ url: vehicle.photos[0].variants.large }] : [],
+      images: vehicle.photos[0]
+        ? [{ url: vehicle.photos[0].variants.large, alt: `${vehicle.title} – photo 1` }]
+        : [],
     },
   };
 }

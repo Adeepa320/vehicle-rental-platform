@@ -6,6 +6,8 @@ import { BookingExpiryService } from './modules/bookings/booking-expiry.service'
 import { registerBookingJobs } from './modules/bookings/booking-expiry.worker';
 import { DocumentExpiryService } from './modules/documents/document-expiry.service';
 import { registerDocumentJobs } from './modules/documents/document-expiry.worker';
+import { RetentionService } from './modules/retention/retention.service';
+import { registerRetentionJobs } from './modules/retention/retention.worker';
 import { EmailService } from './modules/notifications/email/email.service';
 import { registerEmailJobs } from './modules/notifications/email/email.worker';
 import { RemindersService } from './modules/notifications/reminders/reminders.service';
@@ -17,6 +19,8 @@ import { WorkerModule } from './worker.module';
  * run as a separate process so queue work never competes with HTTP traffic.
  */
 async function bootstrap(): Promise<void> {
+  // Tag every log line of this process as the worker (the logger module reads it at start-up).
+  process.env.SERVICE_NAME ??= 'worker';
   const app = await NestFactory.createApplicationContext(WorkerModule, {
     bufferLogs: true,
     // Reject instead of process.abort() so the catch below can log a readable message.
@@ -32,6 +36,7 @@ async function bootstrap(): Promise<void> {
   await registerBookingJobs(jobs, app.get(BookingExpiryService));
   await registerReminderJobs(jobs, app.get(RemindersService));
   await registerDocumentJobs(jobs, app.get(DocumentExpiryService));
+  await registerRetentionJobs(jobs, app.get(RetentionService));
   logger.log(`Worker ready; registered job handlers: ${jobs.registeredJobNames.join(', ')}`);
 }
 

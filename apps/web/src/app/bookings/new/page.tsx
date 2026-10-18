@@ -152,7 +152,9 @@ function NewBookingForm() {
   if (gate !== 'ready') {
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-12">
-        <p className="text-muted-foreground text-sm">Checking your session…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Checking your session…
+        </p>
       </main>
     );
   }
@@ -166,7 +168,9 @@ function NewBookingForm() {
   if (!vehicle || !quote) {
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-12">
-        <p className="text-muted-foreground text-sm">Loading the vehicle and price…</p>
+        <p className="text-muted-foreground text-sm" role="status">
+          Loading the vehicle and price…
+        </p>
       </main>
     );
   }
@@ -190,7 +194,7 @@ function NewBookingForm() {
       <section className="grid gap-4 rounded-lg border p-4 sm:grid-cols-[160px_1fr]">
         <Photo
           src={photoSrc(vehicle.photos[0], 'medium')}
-          alt={vehicle.title}
+          alt={`${vehicle.title} – photo 1`}
           className="aspect-[4/3]"
           sizes="160px"
         />

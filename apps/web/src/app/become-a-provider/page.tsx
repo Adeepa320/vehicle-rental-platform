@@ -2,12 +2,14 @@ import type { Metadata } from 'next';
 
 import { BecomeProviderCta } from '@/components/providers/become-provider-cta';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { publicPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
   title: 'Become a provider',
   description:
     'List your cars, vans, SUVs or bikes for rent on the South Coast. Free to list; applications are reviewed by our team.',
-};
+  path: '/become-a-provider',
+});
 
 const STEPS = [
   {

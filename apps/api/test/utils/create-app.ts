@@ -25,6 +25,8 @@ export const TEST_ENV_DEFAULTS: Record<string, string> = {
   STORAGE_PROVIDER: 'memory',
   STORAGE_PUBLIC_URL: 'http://storage.test/vrp-public',
   OPENAPI_ENABLED: 'true',
+  // The admin-MFA policy has its own suite; every other suite creates admins without a factor.
+  ADMIN_MFA_REQUIRED: 'false',
   // Deterministic payment gateway: PayHere adapter with a known fake secret (see payment-helpers.ts).
   PAYMENT_GATEWAY: 'fake',
   PAYHERE_MERCHANT_SECRET: 'e2e-fake-merchant-secret-32-characters!',

@@ -15,7 +15,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --filter=!@vrp/e2e",
+    "e2e": "pnpm --filter @vrp/e2e test",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -27,7 +28,17 @@
     "db:seed": "pnpm --filter @vrp/database seed",
     "db:setup": "pnpm db:up && pnpm db:migrate && pnpm db:seed",
     "clean": "turbo run clean",
-    "admin:grant": "pnpm --filter @vrp/api admin:grant"
+    "admin:grant": "pnpm --filter @vrp/api admin:grant",
+    "admin:mfa-report": "pnpm --filter @vrp/api admin:mfa-report",
+    "admin:mfa-reset": "pnpm --filter @vrp/api admin:mfa-reset",
+    "production:check": "pnpm --filter @vrp/api production:check",
+    "retention:preview": "pnpm --filter @vrp/api retention:preview",
+    "supply:report": "pnpm --filter @vrp/api supply:report",
+    "smoke:phase10": "node scripts/smoke-phase10.mjs",
+    "perf:seed": "pnpm --filter @vrp/api perf:seed",
+    "perf:load": "pnpm --filter @vrp/api perf:load",
+    "perf:explain": "pnpm --filter @vrp/api perf:explain",
+    "legal:render": "pnpm --filter @vrp/contracts legal:render"
   },
   "devDependencies": {
     "prettier": "^3.9.9",

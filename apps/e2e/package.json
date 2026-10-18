@@ -1,0 +1,25 @@
+{
+  "name": "@vrp/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser end-to-end suite (Playwright, Chromium) against the built web app, API and worker with the fake payment gateway",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "install:browsers": "playwright install chromium",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "clean": "node -e \"for (const d of ['test-results','playwright-report','.world']) require('node:fs').rmSync(d,{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "~24.19.1",
+    "@vrp/contracts": "workspace:*",
+    "@vrp/eslint-config": "workspace:*",
+    "@vrp/typescript-config": "workspace:*",
+    "eslint": "^9.39.5",
+    "typescript": "~6.0.3"
+  }
+}

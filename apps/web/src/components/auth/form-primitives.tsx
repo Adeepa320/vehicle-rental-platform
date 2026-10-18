@@ -46,12 +46,18 @@ export function FormField({
           {error}
         </p>
       ) : hint ? (
-        <p className="text-muted-foreground text-xs">{hint}</p>
+        <p id={`${id}-hint`} className="text-muted-foreground text-xs">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
 }
 
+/**
+ * Status or error message for a form. Errors interrupt (`role="alert"`);
+ * everything else is announced politely once the user is idle.
+ */
 export function FormMessage({
   variant = 'default',
   title,
@@ -62,7 +68,11 @@ export function FormMessage({
   children: ReactNode;
 }) {
   return (
-    <Alert variant={variant}>
+    <Alert
+      variant={variant}
+      role={variant === 'destructive' ? 'alert' : 'status'}
+      aria-live="polite"
+    >
       {title ? <AlertTitle>{title}</AlertTitle> : null}
       <AlertDescription>{children}</AlertDescription>
     </Alert>

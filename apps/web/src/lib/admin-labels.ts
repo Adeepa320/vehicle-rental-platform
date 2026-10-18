@@ -111,6 +111,7 @@ export const SETTING_GROUP_LABEL: Record<SettingGroup, string> = {
   money: 'Money (coupled pair)',
   display_currency: 'Display currency',
   disputes: 'Disputes',
+  retention: 'Data retention',
 };
 
 export const USER_STATUS: Record<UserStatus, { label: string; tone: BadgeTone }> = {

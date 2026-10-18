@@ -119,15 +119,25 @@ export function SearchResults() {
             <option value="price_asc">Price: low to high</option>
             <option value="price_desc">Price: high to low</option>
           </select>
-          <Button variant="outline" size="sm" onClick={() => setShowMap((v) => !v)}>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-pressed={showMap}
+            onClick={() => setShowMap((v) => !v)}
+          >
             {showMap ? 'Hide map' : 'Show map'}
           </Button>
         </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-        <aside className="grid gap-4 self-start rounded-lg border p-4 text-sm">
-          <h2 className="font-medium">Filters</h2>
+        <aside
+          className="grid gap-4 self-start rounded-lg border p-4 text-sm"
+          aria-labelledby="filters-heading"
+        >
+          <h2 id="filters-heading" className="font-medium">
+            Filters
+          </h2>
           <div className="grid gap-1.5">
             <label htmlFor="f-category">Vehicle type</label>
             <select
@@ -196,17 +206,21 @@ export function SearchResults() {
             />
           </div>
           <div className="grid gap-1.5">
-            <label>Daily price (LKR)</label>
-            <div className="grid grid-cols-2 gap-2">
+            <p id="f-price-label">Daily price (LKR)</p>
+            <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="f-price-label">
               <Input
+                id="f-price-min"
                 inputMode="numeric"
                 placeholder="Min"
+                aria-label="Minimum daily price (LKR)"
                 defaultValue={state.minDailyRate ?? ''}
                 onBlur={(e) => update({ minDailyRate: e.target.value.trim() || undefined })}
               />
               <Input
+                id="f-price-max"
                 inputMode="numeric"
                 placeholder="Max"
+                aria-label="Maximum daily price (LKR)"
                 defaultValue={state.maxDailyRate ?? ''}
                 onBlur={(e) => update({ maxDailyRate: e.target.value.trim() || undefined })}
               />
@@ -245,19 +259,22 @@ export function SearchResults() {
           </Button>
         </aside>
 
-        <section className="grid gap-4">
+        <section className="grid min-h-[85vh] content-start gap-4" aria-label="Results">
           {showMap ? (
             <SearchMap
               points={points}
               onSelect={setHighlighted}
               note="Pins show the approximate pickup area (about 500 m). The exact pickup point is shared after a booking is confirmed."
+              unavailableText="Map unavailable; results are listed below."
             />
           ) : null}
           {status.kind === 'error' ? (
             <FormMessage variant="destructive">{status.message}</FormMessage>
           ) : null}
           {status.kind === 'loading' && cards.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Searching…</p>
+            <p className="text-muted-foreground text-sm" role="status">
+              Searching…
+            </p>
           ) : null}
           {status.kind === 'ready' && cards.length === 0 ? (
             <FormMessage title="No vehicles match this search">

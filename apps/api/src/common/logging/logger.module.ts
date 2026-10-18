@@ -34,12 +34,38 @@ export function resolveRequestId(req: IncomingMessage, res: ServerResponse): str
 export function redactRequestForLog(req: Record<string, unknown>): Record<string, unknown> {
   const url = typeof req.url === 'string' ? req.url : '';
   const [path, query] = url.split('?', 2);
-  const { query: _query, params: _params, ...rest } = req;
+  const { query: _query, params: _params, headers, ...rest } = req;
   return {
     ...rest,
     url: path,
     ...(query ? { queryKeys: [...new Set(new URLSearchParams(query).keys())].sort() } : {}),
+    ...(headers && typeof headers === 'object' ? { headers: pickLoggedHeaders(headers) } : {}),
   };
+}
+
+/**
+ * Request headers are logged from an allow-list (Phase 10 log canary): any
+ * other header — custom ones a client or proxy adds, `Referer` (a reset link
+ * carries its token in the query), forwarding headers — never reaches the log.
+ * `authorization` / `cookie` stay out as before.
+ */
+const LOGGED_REQUEST_HEADERS = [
+  'host',
+  'user-agent',
+  'accept',
+  'content-type',
+  'content-length',
+  'origin',
+  'x-request-id',
+] as const;
+
+function pickLoggedHeaders(headers: object): Record<string, unknown> {
+  const source = headers as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  for (const name of LOGGED_REQUEST_HEADERS) {
+    if (source[name] !== undefined) picked[name] = source[name];
+  }
+  return picked;
 }
 
 @Module({
@@ -48,9 +74,27 @@ export function redactRequestForLog(req: Record<string, unknown>): Record<string
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => {
         const nodeEnv = config.get('NODE_ENV', { infer: true });
+        const release = config.get('APP_RELEASE', { infer: true });
         return {
           pinoHttp: {
             level: config.get('LOG_LEVEL', { infer: true }),
+            // Every line carries the service, environment and release (Phase 10 observability);
+            // request lines add the matched route template and the stable user id, never names.
+            base: {
+              service: process.env.SERVICE_NAME ?? 'api',
+              environment: nodeEnv,
+              ...(release ? { release } : {}),
+            },
+            customProps: (req) => {
+              const request = req as IncomingMessage & {
+                route?: { path?: string };
+                user?: { id?: string };
+              };
+              return {
+                ...(request.route?.path ? { route: request.route.path } : {}),
+                ...(request.user?.id ? { userId: request.user.id } : {}),
+              };
+            },
             genReqId: resolveRequestId,
             autoLogging: {
               // Health probes are frequent and uninteresting.

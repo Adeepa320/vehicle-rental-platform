@@ -59,10 +59,12 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* WCAG 2.1 AA: 5.5:1 on --muted and 6.0:1 on white (shadcn default 0.556 was 4.34:1 on --muted). */
+  --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* WCAG 2.1 AA: 5.96:1 on white, 4.95:1 on the /10 tint, 5.48:1 at 90 % (shadcn default 0.577 failed both). */
+  --destructive: oklch(0.5 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -125,5 +127,11 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Visible keyboard focus for plain links and other focusables that have no ring utilities. */
+  a:focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex='-1']):focus-visible {
+    @apply outline-ring rounded-sm outline-2 outline-offset-2;
   }
 }

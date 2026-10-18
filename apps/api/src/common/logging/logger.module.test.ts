@@ -24,6 +24,33 @@ describe('request log projection', () => {
     expect(JSON.stringify(out)).not.toContain('example.com');
   });
 
+  it('logs only allow-listed request headers', () => {
+    const out = redactRequestForLog({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: {
+        host: 'api.example.lk',
+        'user-agent': 'Mozilla/5.0',
+        'content-type': 'application/json',
+        origin: 'https://app.example.lk',
+        authorization: 'Bearer secret-token',
+        cookie: 'vrp_refresh=secret',
+        referer: 'https://app.example.lk/reset-password?token=reset-secret',
+        'x-forwarded-for': '203.0.113.7',
+        'x-api-key': 'canary-value',
+      },
+    });
+    expect(out.headers).toEqual({
+      host: 'api.example.lk',
+      'user-agent': 'Mozilla/5.0',
+      'content-type': 'application/json',
+      origin: 'https://app.example.lk',
+    });
+    for (const secret of ['secret-token', 'vrp_refresh', 'reset-secret', '203.0.113.7', 'canary']) {
+      expect(JSON.stringify(out)).not.toContain(secret);
+    }
+  });
+
   it('leaves requests without a query string untouched apart from the dropped objects', () => {
     expect(redactRequestForLog({ method: 'POST', url: '/api/v1/bookings', query: {} })).toEqual({
       method: 'POST',

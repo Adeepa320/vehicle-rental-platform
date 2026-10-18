@@ -32,6 +32,14 @@ export interface BookingSettings {
   defaultSearchRadiusKm: number;
   /** Largest radius a client may request; larger values are clamped. */
   maxSearchRadiusKm: number;
+  /** Days a rejected verification document (and its file) is kept before the retention sweep deletes it (Phase 10); 0 keeps forever. */
+  documentRetentionRejectedDays: number;
+  /** Days a superseded verification document is kept after replacement (Phase 10); 0 keeps forever. */
+  documentRetentionSupersededDays: number;
+  /** Days after a booking finishes before its driver snapshot is purged (Phase 10); 0 = disabled (pending legal review). */
+  driverSnapshotRetentionDays: number;
+  /** Days anonymous search logs are kept (Phase 10); 0 keeps forever. */
+  searchLogRetentionDays: number;
 }
 
 export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
@@ -49,6 +57,10 @@ export const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   autoPauseOnDocumentExpiry: true,
   defaultSearchRadiusKm: 15,
   maxSearchRadiusKm: 50,
+  documentRetentionRejectedDays: 30,
+  documentRetentionSupersededDays: 90,
+  driverSnapshotRetentionDays: 0,
+  searchLogRetentionDays: 400,
 };
 
 const KEYS = [
@@ -66,6 +78,10 @@ const KEYS = [
   'auto_pause_on_document_expiry',
   'default_search_radius_km',
   'max_search_radius_km',
+  'document_retention_rejected_days',
+  'document_retention_superseded_days',
+  'driver_snapshot_retention_days',
+  'search_log_retention_days',
 ] as const;
 const Percent = z.number().min(1).max(100);
 const Km = z.number().min(1).max(200);
@@ -76,6 +92,8 @@ const Hours = z
   .max(24 * 30);
 const Grace = z.number().min(0).max(72);
 const Days = z.number().min(1).max(90);
+/** Retention periods in days; 0 disables the class. */
+const RetentionDays = z.number().int().min(0).max(3650);
 const Stage = z.enum(['accepted', 'confirmed']);
 
 const CACHE_MS = 60_000;
@@ -147,6 +165,26 @@ export class BookingSettingsService {
         d.defaultSearchRadiusKm,
       ),
       maxSearchRadiusKm: pick(Km, byKey.get('max_search_radius_km'), d.maxSearchRadiusKm),
+      documentRetentionRejectedDays: pick(
+        RetentionDays,
+        byKey.get('document_retention_rejected_days'),
+        d.documentRetentionRejectedDays,
+      ),
+      documentRetentionSupersededDays: pick(
+        RetentionDays,
+        byKey.get('document_retention_superseded_days'),
+        d.documentRetentionSupersededDays,
+      ),
+      driverSnapshotRetentionDays: pick(
+        RetentionDays,
+        byKey.get('driver_snapshot_retention_days'),
+        d.driverSnapshotRetentionDays,
+      ),
+      searchLogRetentionDays: pick(
+        RetentionDays,
+        byKey.get('search_log_retention_days'),
+        d.searchLogRetentionDays,
+      ),
     };
     this.cached = { value, at: Date.now() };
     return value;

@@ -178,10 +178,14 @@ describe.skipIf(!url)('login, access tokens, refresh rotation and logout', () =>
     expect(csrf.body.error.code).toBe('FORBIDDEN');
   });
 
-  it('logout revokes the current refresh token and clears the cookie; the access token still expires naturally', async () => {
+  it('logout revokes the current session and clears the cookie; its access token stops working at once', async () => {
     const email = nextEmail();
     await registerAndVerify(app, email);
     const session = await login(app, email);
+    await request(app.getHttpServer())
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${session.body.accessToken}`)
+      .expect(200);
 
     const logout = await request(app.getHttpServer())
       .post('/api/v1/auth/logout')
@@ -194,6 +198,10 @@ describe.skipIf(!url)('login, access tokens, refresh rotation and logout', () =>
       .post('/api/v1/auth/refresh')
       .set('Origin', ORIGIN)
       .set('Cookie', session.cookieHeader)
+      .expect(401);
+    await request(app.getHttpServer())
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${session.body.accessToken}`)
       .expect(401);
   });
 

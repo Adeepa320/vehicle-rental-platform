@@ -41,6 +41,8 @@ export function PaymentStateLine({
  * Hands the browser to the gateway: PayHere's hosted page expects a classic
  * form POST with the server-signed fields. Submitted automatically on mount;
  * the button stays as a fallback for browsers that block the auto-submit.
+ * The target (PayHere live/sandbox, or the API origin for the local fake
+ * gateway) is allow-listed by the CSP `form-action` directive (lib/security/csp.ts).
  */
 export function GatewayRedirectForm({ session }: { session: CheckoutSession }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -49,11 +51,17 @@ export function GatewayRedirectForm({ session }: { session: CheckoutSession }) {
     return () => clearTimeout(timer);
   }, []);
   return (
-    <form ref={formRef} method={session.method} action={session.checkoutUrl} className="grid gap-2">
+    <form
+      ref={formRef}
+      method={session.method}
+      action={session.checkoutUrl}
+      className="grid gap-2"
+      aria-label="Redirect to the payment provider"
+    >
       {Object.entries(session.fields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <p className="text-muted-foreground text-sm">
+      <p className="text-muted-foreground text-sm" role="status" aria-live="polite">
         Taking you to the secure payment page for {formatLkr(session.amount)}…
       </p>
       <Button type="submit" variant="outline" size="sm">
@@ -88,7 +96,11 @@ export function PayAdvanceButton({ bookingId, amount }: { bookingId: string; amo
       >
         {busy ? 'Preparing payment…' : `Pay advance securely (${formatLkr(amount)})`}
       </Button>
-      {error ? <p className="text-destructive text-xs">{error}</p> : null}
+      {error ? (
+        <p className="text-destructive text-xs" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

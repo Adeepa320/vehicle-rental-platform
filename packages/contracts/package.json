@@ -6,14 +6,17 @@
   "license": "UNLICENSED",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./src/index.ts",
       "default": "./dist/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -21,6 +24,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "legal:render": "tsx scripts/render-legal.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
@@ -31,6 +35,7 @@
     "@vrp/eslint-config": "workspace:*",
     "@vrp/typescript-config": "workspace:*",
     "eslint": "^9.39.5",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "vitest": "^5.0.3"
   }

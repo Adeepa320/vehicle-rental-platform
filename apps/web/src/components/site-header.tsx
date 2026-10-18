@@ -6,12 +6,13 @@ import { useRouter } from 'next/navigation';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth/auth-context';
+import { isPrivilegedRole } from '@/lib/auth/mfa';
 
 export function SiteHeader() {
   const { status, user, logout } = useAuth();
   const router = useRouter();
   const isProvider = user?.roles.includes('provider') ?? false;
-  const isAdmin = (user?.roles.includes('admin') || user?.roles.includes('super_admin')) ?? false;
+  const isAdmin = isPrivilegedRole(user?.roles);
 
   return (
     <header className="border-b">
@@ -20,7 +21,10 @@ export function SiteHeader() {
           <Link href="/" className="font-semibold tracking-tight">
             Vehicle Rental Platform
           </Link>
-          <nav className="hidden items-center gap-1 text-sm sm:flex">
+          <nav aria-label="Primary" className="hidden items-center gap-1 text-sm sm:flex">
+            <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/search" />}>
+              Search
+            </Button>
             {isProvider ? (
               <Button
                 variant="ghost"
@@ -52,16 +56,35 @@ export function SiteHeader() {
             ) : null}
           </nav>
         </div>
-        <nav className="flex items-center gap-2 text-sm">
+        <nav aria-label="Account" className="flex items-center gap-2 text-sm">
           {status === 'loading' ? (
-            <span className="text-muted-foreground">…</span>
+            <span
+              className="text-muted-foreground"
+              role="status"
+              aria-label="Checking your session"
+            >
+              …
+            </span>
           ) : status === 'authenticated' && user ? (
             <>
               <NotificationBell />
               <Button variant="ghost" nativeButton={false} render={<Link href="/bookings" />}>
                 My bookings
               </Button>
-              <Button variant="ghost" nativeButton={false} render={<Link href="/account" />}>
+              {isAdmin ? (
+                <Button
+                  variant="ghost"
+                  nativeButton={false}
+                  render={<Link href="/account/security" />}
+                >
+                  Security
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                nativeButton={false}
+                render={<Link href="/account" aria-label={`${user.fullName} (your account)`} />}
+              >
                 {user.fullName}
               </Button>
               <Button

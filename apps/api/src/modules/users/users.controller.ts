@@ -12,11 +12,14 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ApiZodBody, ApiZodResponse } from '../../openapi/zod-openapi';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { MfaExempt } from '../auth/decorators/mfa-exempt.decorator';
 import { toPublicUser } from './user.mapper';
 import { UsersService } from './users.service';
 
 @ApiTags('users')
 @ApiBearerAuth()
+// The own minimal profile stays reachable for an admin who has not completed MFA yet (Phase 10).
+@MfaExempt()
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
