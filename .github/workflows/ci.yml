@@ -87,7 +87,7 @@ jobs:
         run: pnpm audit --prod --audit-level high
 
       - name: Secret scan (gitleaks, full history, .gitleaks.toml allow-list)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
