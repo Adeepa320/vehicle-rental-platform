@@ -32,7 +32,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@types/node": "~24.19.1",
+    "@types/node": "~26.6.5",
     "@vrp/eslint-config": "workspace:*",
     "@vrp/typescript-config": "workspace:*",
     "drizzle-kit": "^0.31.11",
