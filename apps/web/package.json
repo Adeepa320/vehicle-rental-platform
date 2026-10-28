@@ -37,10 +37,10 @@
     "@vrp/typescript-config": "workspace:*",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.3",
-    "postcss": "^8.5.28",
-    "shadcn": "^4.21.1",
+    "postcss": "^8.5.31",
+    "shadcn": "^4.22.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   }
 }
