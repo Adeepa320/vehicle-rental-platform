@@ -226,7 +226,7 @@ Transitions are defined in one table-driven definition (`from`, `to`, `allowedAc
 - **PostgreSQL 17 with PostGIS** on a managed provider (Neon, Singapore region recommended; Supabase Postgres as alternative — both ship PostGIS). One database, one schema, migrations in repo.
 - Why PostGIS (not plain lat/lng maths, not Mongo geo, not Elasticsearch): we need "vehicles within R km of a point that are free in [S,E)" as a single indexed query joined with availability and filters; PostGIS `geography` + GiST gives correct great-circle distances and bounding-box queries with no extra infrastructure, and our data is relational and transactional (bookings, money). A separate search engine would add cost and consistency problems for availability. Details in TECH_DECISIONS.
 - Availability integrity: `vehicle_holds` + `EXCLUDE USING gist` (DATABASE_DESIGN §7). This is the single most important correctness guarantee in the system and is **not** replicable in application code alone.
-- Connection pooling: Neon's pooled endpoint (PgBouncer) for the API; direct endpoint for migrations and pg-boss (which needs session features).
+- Connection pooling: Neon's pooled endpoint (PgBouncer) for the API; direct endpoint for migrations and pg-boss (which needs session features). **Superseded for staging by TECH_DECISIONS D77 (2026-10-28):** pg-boss also runs inside the API process on the same `DATABASE_URL`, so the API, worker and migrator all use the direct endpoint until a pooler is proven compatible.
 - Backups: provider daily backups + point-in-time restore (Neon history retention / Supabase PITR add-on); restore drill in Phase 10.
 - Local development: `infra/docker-compose.yml` runs `postgis/postgis:17` with the same extensions.
 

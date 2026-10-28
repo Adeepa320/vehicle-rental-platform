@@ -35,6 +35,7 @@
     "retention:preview": "pnpm --filter @vrp/api retention:preview",
     "supply:report": "pnpm --filter @vrp/api supply:report",
     "smoke:phase10": "node scripts/smoke-phase10.mjs",
+    "smoke:staging": "node scripts/smoke-staging.mjs",
     "perf:seed": "pnpm --filter @vrp/api perf:seed",
     "perf:load": "pnpm --filter @vrp/api perf:load",
     "perf:explain": "pnpm --filter @vrp/api perf:explain",

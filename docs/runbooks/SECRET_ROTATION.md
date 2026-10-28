@@ -84,7 +84,7 @@ Rollback for any row: set the previous value back in Railway and redeploy; the r
 | Order        | Set the new URL on the **worker and the API** (both connect; pg-boss uses the same URL) → redeploy both → confirm `GET /api/v1/ready` `database: up` and jobs flowing → drop or disable the old role at the vendor. Also rotate any read-only role used for dumps (BACKUP_AND_RESTORE.md §3) |
 | Validate     | `/ready` green; a booking request creates `booking_events`; an e-mail job completes                                                                                                                                                                                                          |
 | Rollback     | Set the old URL back while the old role still exists                                                                                                                                                                                                                                         |
-| Note         | The `/ready` error message redacts connection strings; logs never print `DATABASE_URL`. Keep it that way                                                                                                                                                                                     |
+| Note         | The `/ready` failure messages are fixed generic strings (no host, address, port or connection string; the cause is logged server-side with URLs redacted); logs never print `DATABASE_URL`. Keep it that way                                                                                 |
 
 ## 8. `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` (S3 API credentials for R2)
 

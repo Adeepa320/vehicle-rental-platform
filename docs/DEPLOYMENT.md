@@ -109,3 +109,5 @@ The refresh cookie is `__Secure-vrp_refresh`, `SameSite=Lax`, path `/api/v1/auth
 ## 10. Staging
 
 Same images, `LAUNCH_MODE=staging`, PayHere sandbox credentials, a separate database branch / project, separate buckets and a separate Resend sending domain. Staging is where the PayHere sandbox certification (`docs/runbooks/PAYHERE_GO_LIVE.md`) runs with a public notify URL.
+
+**Go-live Step 1 (2026-10-28, TECH_DECISIONS D77):** the operator procedure is [runbooks/STAGING_DEPLOYMENT.md](runbooks/STAGING_DEPLOYMENT.md). It covers service names (`vehicle-rental-staging-{web,api,worker,db}`), the variable matrix, the Railway and Neon dashboard steps, migrations as the API **pre-deploy command**, the Neon **direct** endpoint, `pnpm smoke:staging`, rollback and teardown. Two constraints apply. A production-mode API and worker start only with real SMTP, S3 and PayHere sandbox credentials; there is deliberately no bypass. Sign-in on staging needs web and API on one registrable domain (`up.railway.app` is a public suffix). **EXTERNAL GATE — NOT EXECUTED:** no Railway or Neon resource exists yet.
