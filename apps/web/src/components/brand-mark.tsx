@@ -1,0 +1,16 @@
+/** Decorative logo mark (the wordmark next to it carries the name). Same drawing as `app/icon.svg`. */
+export function BrandMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden focusable="false" className={className}>
+      <rect width="64" height="64" rx="14" fill="#123b4a" />
+      <path d="M8 50c8-4 16-4 24 0s16 4 24 0v6H8z" fill="#168a8a" opacity=".9" />
+      <path
+        d="M14 36l5-12a4 4 0 0 1 3.7-2.5h18.6A4 4 0 0 1 45 24l5 12v7a2 2 0 0 1-2 2h-3a2 2 0 0 1-2-2v-2H21v2a2 2 0 0 1-2 2h-3a2 2 0 0 1-2-2z"
+        fill="#ffffff"
+      />
+      <circle cx="22" cy="36" r="3" fill="#f5a623" />
+      <circle cx="42" cy="36" r="3" fill="#f5a623" />
+      <path d="M20 30l3.5-7h17l3.5 7z" fill="#123b4a" opacity=".3" />
+    </svg>
+  );
+}

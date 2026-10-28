@@ -23,7 +23,8 @@
     "supply:report": "tsx src/cli/supply-report.ts",
     "perf:seed": "tsx scripts/perf/seed-perf.ts",
     "perf:load": "node scripts/perf/loadgen.mjs",
-    "perf:explain": "node scripts/perf/explain.mjs"
+    "perf:explain": "node scripts/perf/explain.mjs",
+    "demo:seed": "tsx scripts/demo/seed-demo.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1145.0",

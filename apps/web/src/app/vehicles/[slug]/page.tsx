@@ -1,4 +1,5 @@
-import { formatLkr, type PublicVehicleDetail } from '@vrp/contracts';
+import { formatLkr, type PublicVehicleDetail, type VehicleCategory } from '@vrp/contracts';
+import { ArrowLeft, MapPin } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -11,7 +12,7 @@ import { LicensingGuidance } from '@/components/guidance/licensing-guidance';
 import { ProviderMetricsList } from '@/components/provider/provider-metrics-card';
 import { RatingSummaryLine } from '@/components/reviews/rating-stars';
 import { VehicleReviews } from '@/components/reviews/vehicle-reviews';
-import { Badge } from '@/components/ui/badge';
+import { ProviderTrustBadge, VehicleVerifiedBadge } from '@/components/public/trust-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ApiClientError, createApiClient } from '@/lib/api-client';
 import { serverEnv } from '@/lib/env';
@@ -31,6 +32,17 @@ async function loadVehicle(slug: string): Promise<PublicVehicleDetail | null> {
     if (error instanceof ApiClientError && (error.status === 404 || error.status === 400))
       return null;
     throw error;
+  }
+}
+
+async function loadCategoryName(id: string): Promise<string> {
+  const env = serverEnv();
+  const api = createApiClient({ baseUrl: env.API_INTERNAL_URL, timeoutMs: 3_000 });
+  try {
+    const categories: VehicleCategory[] = await api.reference.vehicleCategories();
+    return categories.find((c) => c.id === id)?.name ?? id;
+  } catch {
+    return id;
   }
 }
 
@@ -63,9 +75,10 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
   const { slug } = await params;
   const vehicle = await loadVehicle(slug);
   if (!vehicle) notFound();
+  const categoryLabel = await loadCategoryName(vehicle.categoryId);
 
   const specs: [string, string][] = [
-    ['Category', vehicle.categoryId],
+    ['Category', categoryLabel],
     ['Transmission', vehicle.transmission ? TRANSMISSION_LABEL[vehicle.transmission] : '—'],
     ['Fuel', vehicle.fuelType ? FUEL_LABEL[vehicle.fuelType] : '—'],
     ['Seats', vehicle.seats === null ? '—' : String(vehicle.seats)],
@@ -75,6 +88,14 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
     ['Air conditioning', vehicle.hasAc ? 'Yes' : 'No'],
     ['Colour', vehicle.color ?? '—'],
   ];
+  const highlights = [
+    categoryLabel,
+    vehicle.transmission ? TRANSMISSION_LABEL[vehicle.transmission] : null,
+    vehicle.fuelType ? FUEL_LABEL[vehicle.fuelType] : null,
+    vehicle.seats === null ? null : `${vehicle.seats} seats`,
+    vehicle.hasAc ? 'Air conditioning' : null,
+    vehicle.deliveryAvailable ? 'Delivery available' : null,
+  ].filter((value): value is string => value !== null);
   const rules: [string, string][] = [
     [
       'Minimum rental',
@@ -115,22 +136,50 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
   ];
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8">
-      <Link href="/search" className="text-muted-foreground text-sm underline underline-offset-4">
-        ← Back to search
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
+      <Link
+        href="/search"
+        className="text-muted-foreground hover:text-brand inline-flex w-fit items-center gap-1.5 text-sm"
+      >
+        <ArrowLeft className="size-4" aria-hidden />
+        Back to search
       </Link>
-      <header className="space-y-2">
+      <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">{vehicle.title}</h1>
-          {vehicle.documentsVerified ? <Badge variant="default">Verified vehicle</Badge> : null}
+          <h1 className="text-foreground text-3xl font-bold tracking-tight sm:text-4xl">
+            {vehicle.title}
+          </h1>
+          {vehicle.documentsVerified ? <VehicleVerifiedBadge /> : null}
         </div>
-        <p className="text-muted-foreground">
-          {vehicle.make} {vehicle.model} {vehicle.modelYear} · {vehicle.place.name},{' '}
-          {vehicle.place.districtName}
+        <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+          {vehicle.title
+            .toLowerCase()
+            .startsWith(
+              `${vehicle.make} ${vehicle.model} ${vehicle.modelYear}`.toLowerCase(),
+            ) ? null : (
+            <span>
+              {vehicle.make} {vehicle.model} {vehicle.modelYear}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="text-teal size-4" aria-hidden />
+            {vehicle.place.name}, {vehicle.place.districtName}
+          </span>
         </p>
-        <p>
+        <div className="flex flex-wrap items-center gap-3">
           <RatingSummaryLine summary={vehicle.rating} />
-        </p>
+          <ProviderTrustBadge documentsVerified={vehicle.provider.documentsVerified} />
+        </div>
+        <ul className="flex flex-wrap gap-2" aria-label="Highlights">
+          {highlights.map((item) => (
+            <li
+              key={item}
+              className="bg-card text-foreground rounded-full border px-3 py-1 text-sm"
+            >
+              {item}
+            </li>
+          ))}
+        </ul>
       </header>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -143,7 +192,7 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Specifications</CardTitle>
+              <CardTitle className="text-brand text-base font-semibold">Specifications</CardTitle>
             </CardHeader>
             <CardContent>
               <Rows rows={specs} />
@@ -152,7 +201,9 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Pricing and rental rules</CardTitle>
+              <CardTitle className="text-brand text-base font-semibold">
+                Pricing and rental rules
+              </CardTitle>
               <CardDescription>
                 Listed by the provider. Estimates exclude the refundable deposit, delivery and extra
                 kilometres.
@@ -165,7 +216,7 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Pickup area</CardTitle>
+              <CardTitle className="text-brand text-base font-semibold">Pickup area</CardTitle>
               <CardDescription>
                 {vehicle.place.name}, {vehicle.place.districtName}. Exact address and pickup
                 instructions are shared after a booking is confirmed.
@@ -194,19 +245,19 @@ export default async function VehiclePage({ params }: { params: Promise<Params> 
         </div>
 
         <aside className="grid gap-4 self-start">
-          <Suspense fallback={<div className="bg-muted h-64 animate-pulse rounded-lg" />}>
+          <Suspense
+            fallback={<div className="bg-surface-subtle h-72 animate-pulse rounded-xl border" />}
+          >
             <AvailabilityPanel slug={vehicle.slug} pricing={vehicle.pricing} />
           </Suspense>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">{vehicle.provider.displayName}</CardTitle>
+              <CardTitle className="text-brand text-base font-semibold">
+                {vehicle.provider.displayName}
+              </CardTitle>
               <CardDescription>
-                <Badge variant={vehicle.provider.documentsVerified ? 'default' : 'secondary'}>
-                  {vehicle.provider.documentsVerified
-                    ? 'Verified provider'
-                    : 'Platform-approved provider'}
-                </Badge>
+                <ProviderTrustBadge documentsVerified={vehicle.provider.documentsVerified} />
               </CardDescription>
             </CardHeader>
             <CardContent className="text-muted-foreground grid gap-1 text-sm">

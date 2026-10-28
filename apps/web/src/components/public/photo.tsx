@@ -2,6 +2,7 @@
 
 import type { PublicPhoto } from '@vrp/contracts';
 import { cn } from 'cn';
+import { CarFront } from 'lucide-react';
 import Image from 'next/image';
 import { useState } from 'react';
 
@@ -22,6 +23,8 @@ interface PhotoProps {
   className?: string;
   sizes?: string;
   priority?: boolean;
+  /** Extra classes for the `<img>` itself (e.g. a hover zoom driven by a parent group). */
+  imgClassName?: string;
 }
 
 /**
@@ -29,10 +32,10 @@ interface PhotoProps {
  * load (storage down, deleted object). Variants are pre-sized WebP from our own
  * storage, so Next's optimizer is bypassed (`unoptimized`).
  */
-export function Photo({ src, alt, className, sizes, priority }: PhotoProps) {
+export function Photo({ src, alt, className, sizes, priority, imgClassName }: PhotoProps) {
   const [failed, setFailed] = useState(false);
   return (
-    <div className={cn('bg-muted relative overflow-hidden rounded-md', className)}>
+    <div className={cn('bg-surface-subtle relative overflow-hidden rounded-md', className)}>
       {src && !failed ? (
         <Image
           src={src}
@@ -41,12 +44,16 @@ export function Photo({ src, alt, className, sizes, priority }: PhotoProps) {
           unoptimized
           sizes={sizes ?? '(max-width: 640px) 100vw, 400px'}
           priority={priority}
-          className="object-cover"
+          className={cn('object-cover', imgClassName)}
           onError={() => setFailed(true)}
         />
       ) : (
-        <div className="text-muted-foreground flex h-full w-full items-center justify-center text-xs">
-          No photo
+        <div
+          className="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-1.5 text-xs"
+          {...(alt ? { role: 'img', 'aria-label': `${alt} (photo unavailable)` } : {})}
+        >
+          <CarFront className="size-7 opacity-50" aria-hidden />
+          <span aria-hidden>Photo unavailable</span>
         </div>
       )}
     </div>

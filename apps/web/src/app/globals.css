@@ -38,6 +38,19 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  /* Brand roles (coastal identity): navy structure, amber high-intent actions, teal states, green trust. */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-cta: var(--cta);
+  --color-cta-hover: var(--cta-hover);
+  --color-cta-foreground: var(--cta-foreground);
+  --color-teal: var(--teal);
+  --color-teal-strong: var(--teal-strong);
+  --color-teal-soft: var(--teal-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-surface-subtle: var(--surface-subtle);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -48,26 +61,44 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  /* WCAG 2.1 AA: 5.5:1 on --muted and 6.0:1 on white (shadcn default 0.556 was 4.34:1 on --muted). */
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Page is a cool off-white; cards and popovers stay pure white surfaces. */
+  --background: #f7f9fa;
+  --foreground: #172126;
+  --card: #ffffff;
+  --card-foreground: #172126;
+  --popover: #ffffff;
+  --popover-foreground: #172126;
+  /* Deep ocean navy: structure, navigation, default buttons (12.6:1 with white text). */
+  --primary: #123b4a;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f6;
+  --secondary-foreground: #123b4a;
+  --muted: #f1f5f6;
+  /* WCAG 2.1 AA: 5.7:1 on white, 5.4:1 on the page, 5.2:1 on --muted (the #66757d brief value was 4.3:1 on --muted). */
+  --muted-foreground: #5b6a72;
+  --accent: #e8f4f4;
+  --accent-foreground: #123b4a;
   /* WCAG 2.1 AA: 5.96:1 on white, 4.95:1 on the /10 tint, 5.48:1 at 90 % (shadcn default 0.577 failed both). */
   --destructive: oklch(0.5 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #dde4e7;
+  /* Form controls get a slightly stronger edge than layout borders. */
+  --input: #c5d0d5;
+  --ring: #168a8a;
+  --brand: #123b4a;
+  --brand-hover: #0d2f3b;
+  --brand-foreground: #ffffff;
+  /* Warm amber for high-intent customer actions; dark text keeps 8.2:1 (white on amber would be 2.1:1). */
+  --cta: #f5a623;
+  --cta-hover: #e59412;
+  --cta-foreground: #172126;
+  /* Coastal teal: icons, rings, active states. Text uses --teal-strong (5.7:1 on white). */
+  --teal: #168a8a;
+  --teal-strong: #0f6f70;
+  --teal-soft: #e8f4f4;
+  /* Approved / success: text 5.7:1 on its soft background. */
+  --success: #12703f;
+  --success-soft: #eaf7ef;
+  --surface-subtle: #f1f5f6;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -103,6 +134,18 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  --brand: #123b4a;
+  --brand-hover: #0d2f3b;
+  --brand-foreground: #ffffff;
+  --cta: #f5a623;
+  --cta-hover: #e59412;
+  --cta-foreground: #172126;
+  --teal: #3fb5b5;
+  --teal-strong: #6fd0d0;
+  --teal-soft: oklch(0.3 0.04 195);
+  --success: #6fd49c;
+  --success-soft: oklch(0.3 0.05 155);
+  --surface-subtle: oklch(0.25 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

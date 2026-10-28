@@ -36,7 +36,7 @@ export function RatingSummaryLine({
       <span className="text-amber-500" aria-hidden>
         ★
       </span>
-      <span className="font-medium">{summary.average}</span>
+      <span className="text-foreground font-semibold">{summary.average}</span>
       <span className="text-muted-foreground">· {reviews}</span>
     </span>
   );

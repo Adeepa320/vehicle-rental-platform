@@ -92,6 +92,7 @@ Without `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` the API generates an ephemeral signin
 | `SMOKE_WEB_URL=… SMOKE_API_URL=… pnpm smoke:staging`                                                    | Non-destructive HTTP smoke against a deployed staging (no accounts, data or payments); see `docs/runbooks/STAGING_DEPLOYMENT.md` §11 |
 | `pnpm supply:report [--json] [--strict]`                                                                | Real-supply readiness against the 20–40 vehicle launch target; prints the business go-live gate                                      |
 | `pnpm perf:seed [--drop]` / `pnpm perf:load --scenario search\|booking\|conflict` / `pnpm perf:explain` | 10,000-listing performance dataset (isolated database), load scenarios, `EXPLAIN ANALYZE`                                            |
+| `pnpm demo:seed [--reset]` / `pnpm demo:dev` / `pnpm demo:worker`                                       | Fictional local demo (providers, listings, licensed photos) in its own `vehicle_rental_demo` database; see "Local realistic demo"    |
 | `pnpm legal:render`                                                                                     | Regenerate `docs/legal/*_DRAFT.md` from the typed legal content (CI fails on drift)                                                  |
 | `pnpm e2e`                                                                                              | Playwright browser suite (`apps/e2e`; starts the built API, worker and web app — run `pnpm build` first)                             |
 
@@ -274,6 +275,25 @@ Phase 10 hardens what exists without changing the product (TECH_DECISIONS D67–
 10. **Supply readiness.** `pnpm supply:report` counts active providers, approved and searchable vehicles, document-verified listings and the launch towns covered, and prints `BUSINESS GO-LIVE GATE — MET` or `— NOT MET` against the 20–40 vehicle target.
 11. **Browser suite.** `pnpm build && pnpm e2e` starts the built web app, API and worker (fake gateway, Mailpit, MinIO) and runs the Playwright suite in `apps/e2e`: customer, provider and admin happy paths, key failures, account security (password change) and axe accessibility checks (31 tests, about 2–3 minutes). It drives the installed Google Chrome by default (`PLAYWRIGHT_CHANNEL=msedge` for Edge; an empty `PLAYWRIGHT_CHANNEL=` uses Playwright's bundled Chromium after `pnpm --filter @vrp/e2e install:browsers`). Details and the console / accessibility policy: `apps/e2e/README.md`.
 12. **Backup drill.** `docs/runbooks/BACKUP_AND_RESTORE.md` §4 restores a `pg_dump` of the development database into `vehicle_rental_restore_drill` and compares counts (run 2026-10-18; see the log in §7).
+
+## Local realistic demo
+
+A believable marketplace for visual review, completely separate from test data:
+
+```bash
+pnpm db:setup      # local services, migrations and reference data (once)
+pnpm demo:seed     # creates / tops up the vehicle_rental_demo database
+pnpm demo:dev      # web (http://localhost:3000) + API against the demo database
+pnpm demo:worker   # second terminal: the worker against the demo database
+```
+
+- **Fictional data.** Six invented South Coast rental businesses and their listings (`apps/api/scripts/demo/demo-data.ts`): no real people or businesses, contact numbers in the unassignable `+94 11 0000 xxx` range, `@demo.vrp.invalid` accounts with a random password that is never printed (use "Forgot password" + Mailpit at http://localhost:8025 to look around as a demo provider). Prices are demo values, not market data. No bookings, payments or reviews are fabricated; listings show "No reviews yet".
+- **Separate from E2E data.** The browser suite (`pnpm e2e`) and the smoke scripts write to the development database (`vehicle_rental`); the demo lives in its own database, so neither ever sees the other. Your own local accounts stay in `vehicle_rental` (register again in the demo if you want to try a booking there).
+- **Licensed photos.** Demo photography is from Unsplash / Pexels under their free licences, stored in `apps/api/scripts/demo/photos` and uploaded through the API's own photo pipeline (re-encoded, EXIF/GPS stripped, WebP variants, originals in the private bucket). Source, photographer and licence of every file: [docs/DEMO_ASSETS.md](docs/DEMO_ASSETS.md).
+- **One stack at a time.** The demo uses the same ports and build folders as `pnpm dev` / `pnpm dev:worker`: stop those first (`demo:dev` refuses to start while ports 3000 / 4000 are in use).
+- **Local only.** `demo:seed` and the `demo:*` launchers refuse `NODE_ENV=production`, any `LAUNCH_MODE`, and non-`localhost` database or storage hosts; production and staging never run them (the scripts are not in the images).
+- **Reset.** `pnpm demo:seed --reset` deletes the demo photos from MinIO, drops `vehicle_rental_demo` and seeds it again. It never touches `vehicle_rental` or `vehicle_rental_test`.
+- **Old E2E records in the development database.** They are not deleted automatically (they include bookings, payments, audit events and anonymised accounts that cannot be attributed safely). If you do not need anything in `vehicle_rental`, including your own local accounts, you can start it from scratch: `pnpm db:down`, `docker volume rm vehicle-rental_db-data`, then `pnpm db:setup` (this deletes **all** local development data).
 
 ## Staging (go-live Step 1)
 

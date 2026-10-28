@@ -39,6 +39,9 @@
     "perf:seed": "pnpm --filter @vrp/api perf:seed",
     "perf:load": "pnpm --filter @vrp/api perf:load",
     "perf:explain": "pnpm --filter @vrp/api perf:explain",
+    "demo:seed": "pnpm --filter @vrp/api demo:seed",
+    "demo:dev": "node scripts/with-demo-db.mjs --filter @vrp/web --filter @vrp/api --parallel run dev",
+    "demo:worker": "node scripts/with-demo-db.mjs dev:worker",
     "legal:render": "pnpm --filter @vrp/contracts legal:render"
   },
   "devDependencies": {

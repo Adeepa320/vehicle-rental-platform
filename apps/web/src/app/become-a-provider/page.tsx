@@ -25,8 +25,8 @@ const STEPS = [
     body: 'Our team reviews every application manually and may call or e-mail you to confirm details. No documents are uploaded at this stage; we will tell you if anything is needed.',
   },
   {
-    title: '4. Start listing (coming next)',
-    body: 'Approved providers get a provider dashboard. Vehicle listings, pricing and availability open in the next release.',
+    title: '4. Start listing',
+    body: 'Approved providers get a provider dashboard to add pickup locations and vehicles with photos, prices and rental rules. Our team reviews each listing before it appears in search; you then keep availability up to date and answer booking requests.',
   },
 ];
 

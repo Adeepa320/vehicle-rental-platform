@@ -99,9 +99,9 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
   const today = todayInColombo();
   const canRequest = quote !== null && quote.bookable && quotedDates !== null;
   return (
-    <div className="grid gap-4 rounded-lg border p-4">
-      <div>
-        <p className="text-2xl font-semibold">
+    <div className="bg-card grid gap-4 rounded-xl border p-5 shadow-sm">
+      <div className="space-y-1">
+        <p className="text-3xl font-bold tracking-tight">
           {formatLkr(pricing.dailyRate)}{' '}
           <span className="text-muted-foreground text-base font-normal">/ day</span>
         </p>
@@ -119,6 +119,7 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
           <Input
             id="pickup"
             type="date"
+            className="h-10"
             min={today}
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
@@ -129,13 +130,14 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
           <Input
             id="return"
             type="date"
+            className="h-10"
             min={startDate || today}
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
           />
         </div>
       </div>
-      <Button variant="outline" disabled={busy} onClick={() => void check()}>
+      <Button variant="outline" size="lg" disabled={busy} onClick={() => void check()}>
         {busy ? 'Checking…' : 'Check price and availability'}
       </Button>
       {error ? <p className="text-destructive text-xs">{error}</p> : null}
@@ -143,7 +145,7 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
         <div className="grid gap-2 text-sm">
           <p>
             {quote.bookable ? (
-              <Badge>Available</Badge>
+              <Badge variant="success">Available</Badge>
             ) : (
               <Badge variant="destructive">
                 {quote.available ? 'Cannot be booked for these dates' : 'Not available'}
@@ -169,6 +171,8 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
       ) : null}
       {canRequest && quotedDates ? (
         <Button
+          variant="cta"
+          size="xl"
           nativeButton={false}
           render={
             <Link href={requestBookingHref(slug, quotedDates.startDate, quotedDates.endDate)} />
@@ -177,11 +181,14 @@ export function AvailabilityPanel({ slug, pricing }: AvailabilityPanelProps) {
           Request to book
         </Button>
       ) : (
-        <Button disabled>Request to book</Button>
+        <Button variant="cta" size="xl" disabled>
+          Request to book
+        </Button>
       )}
       <FormMessage>
-        You pay nothing online in this release. The provider accepts or declines your request; the
-        deposit, fuel and extras are settled with the provider at pickup and return.
+        Requesting is free; nothing is charged now. If the provider accepts, you pay an advance
+        online to confirm the booking. The balance, the refundable deposit, fuel and extras are
+        settled with the provider at pickup and return.
       </FormMessage>
     </div>
   );

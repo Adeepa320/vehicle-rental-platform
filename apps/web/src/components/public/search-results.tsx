@@ -1,6 +1,7 @@
 'use client';
 
 import type { PublicVehicleCard, SearchCriteria } from '@vrp/contracts';
+import { Map as MapIcon, SearchX, SlidersHorizontal } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -31,7 +32,8 @@ const SearchMap = dynamic(() => import('./search-map').then((m) => m.SearchMap),
 });
 
 const selectClass =
-  'border-input bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-[3px]';
+  'border-input bg-card h-9 w-full rounded-lg border px-3 text-sm focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:outline-none focus-visible:ring-[3px]';
+const filterLabelClass = 'text-foreground text-sm font-medium';
 
 type Status = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready' };
 
@@ -86,26 +88,31 @@ export function SearchResults() {
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
       <SearchForm initial={state} compact />
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-brand text-2xl font-bold tracking-tight sm:text-3xl">
             {criteria?.place
               ? `Vehicles near ${criteria.place.name}`
               : state.districtId
                 ? `Vehicles in ${state.districtId}`
                 : 'Vehicles on the South Coast'}
           </h1>
-          <p className="text-muted-foreground text-sm">
-            {criteria?.startsAt && criteria.endsAt
-              ? `${formatDay(criteria.startsAt)} → ${formatDay(criteria.endsAt)} · ${criteria.days} day${criteria.days === 1 ? '' : 's'} · only vehicles free for the whole window`
-              : 'Add dates to see real availability and an estimated total.'}
-            {status.kind === 'ready'
-              ? ` · ${cards.length}${nextCursor ? '+' : ''} result${cards.length === 1 ? '' : 's'}`
-              : ''}
+          <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-sm">
+            {status.kind === 'ready' ? (
+              <span className="text-foreground font-semibold">
+                {cards.length}
+                {nextCursor ? '+' : ''} vehicle{cards.length === 1 ? '' : 's'}
+              </span>
+            ) : null}
+            <span>
+              {criteria?.startsAt && criteria.endsAt
+                ? `${formatDay(criteria.startsAt)} → ${formatDay(criteria.endsAt)} · ${criteria.days} day${criteria.days === 1 ? '' : 's'} · only vehicles free for the whole window`
+                : 'Add dates to see real availability and an estimated total.'}
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm" htmlFor="sort">
+          <label className="text-muted-foreground text-sm" htmlFor="sort">
             Sort
           </label>
           <select
@@ -121,25 +128,32 @@ export function SearchResults() {
           </select>
           <Button
             variant="outline"
-            size="sm"
+            className="h-9 bg-card"
             aria-pressed={showMap}
             onClick={() => setShowMap((v) => !v)}
           >
+            <MapIcon aria-hidden />
             {showMap ? 'Hide map' : 'Show map'}
           </Button>
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
         <aside
-          className="grid gap-4 self-start rounded-lg border p-4 text-sm"
+          className="bg-card grid gap-4 self-start rounded-xl border p-4 text-sm shadow-xs lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto"
           aria-labelledby="filters-heading"
         >
-          <h2 id="filters-heading" className="font-medium">
+          <h2
+            id="filters-heading"
+            className="text-brand flex items-center gap-2 border-b pb-3 text-base font-semibold"
+          >
+            <SlidersHorizontal className="text-teal size-4" aria-hidden />
             Filters
           </h2>
           <div className="grid gap-1.5">
-            <label htmlFor="f-category">Vehicle type</label>
+            <label htmlFor="f-category" className={filterLabelClass}>
+              Vehicle type
+            </label>
             <select
               id="f-category"
               className={selectClass}
@@ -155,7 +169,9 @@ export function SearchResults() {
             </select>
           </div>
           <div className="grid gap-1.5">
-            <label htmlFor="f-transmission">Transmission</label>
+            <label htmlFor="f-transmission" className={filterLabelClass}>
+              Transmission
+            </label>
             <select
               id="f-transmission"
               className={selectClass}
@@ -175,7 +191,9 @@ export function SearchResults() {
             </select>
           </div>
           <div className="grid gap-1.5">
-            <label htmlFor="f-fuel">Fuel</label>
+            <label htmlFor="f-fuel" className={filterLabelClass}>
+              Fuel
+            </label>
             <select
               id="f-fuel"
               className={selectClass}
@@ -193,9 +211,12 @@ export function SearchResults() {
             </select>
           </div>
           <div className="grid gap-1.5">
-            <label htmlFor="f-seats">Minimum seats</label>
+            <label htmlFor="f-seats" className={filterLabelClass}>
+              Minimum seats
+            </label>
             <Input
               id="f-seats"
+              className="bg-card h-9"
               type="number"
               min={1}
               max={60}
@@ -206,10 +227,13 @@ export function SearchResults() {
             />
           </div>
           <div className="grid gap-1.5">
-            <p id="f-price-label">Daily price (LKR)</p>
+            <p id="f-price-label" className={filterLabelClass}>
+              Daily price (LKR)
+            </p>
             <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="f-price-label">
               <Input
                 id="f-price-min"
+                className="bg-card h-9"
                 inputMode="numeric"
                 placeholder="Min"
                 aria-label="Minimum daily price (LKR)"
@@ -218,6 +242,7 @@ export function SearchResults() {
               />
               <Input
                 id="f-price-max"
+                className="bg-card h-9"
                 inputMode="numeric"
                 placeholder="Max"
                 aria-label="Maximum daily price (LKR)"
@@ -226,14 +251,14 @@ export function SearchResults() {
               />
             </div>
           </div>
-          <label className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2.5 border-t pt-4">
             <Checkbox
               checked={state.hasAc === true}
               onCheckedChange={(checked) => update({ hasAc: checked === true ? true : undefined })}
             />
             <span>Air conditioning</span>
           </label>
-          <label className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2.5">
             <Checkbox
               checked={state.deliveryAvailable === true}
               onCheckedChange={(checked) =>
@@ -243,8 +268,9 @@ export function SearchResults() {
             <span>Delivery available</span>
           </label>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
+            className="text-teal-strong mt-1"
             onClick={() =>
               router.push(
                 searchHref({
@@ -272,23 +298,44 @@ export function SearchResults() {
             <FormMessage variant="destructive">{status.message}</FormMessage>
           ) : null}
           {status.kind === 'loading' && cards.length === 0 ? (
-            <p className="text-muted-foreground text-sm" role="status">
-              Searching…
-            </p>
+            <>
+              <p className="sr-only" role="status">
+                Searching…
+              </p>
+              {[0, 1, 2].map((n) => (
+                <div
+                  key={n}
+                  aria-hidden
+                  className="bg-card flex flex-col overflow-hidden rounded-xl border sm:flex-row"
+                >
+                  <div className="bg-surface-subtle aspect-[4/3] w-full animate-pulse sm:aspect-auto sm:min-h-52 sm:w-64 md:w-72" />
+                  <div className="flex flex-1 flex-col gap-3 p-5">
+                    <div className="bg-surface-subtle h-5 w-1/2 animate-pulse rounded" />
+                    <div className="bg-surface-subtle h-4 w-3/4 animate-pulse rounded" />
+                    <div className="bg-surface-subtle h-4 w-1/3 animate-pulse rounded" />
+                  </div>
+                </div>
+              ))}
+            </>
           ) : null}
           {status.kind === 'ready' && cards.length === 0 ? (
-            <FormMessage title="No vehicles match this search">
-              Try another town, different dates or fewer filters. New providers are joining the
-              platform as we grow across the South Coast.
-            </FormMessage>
+            <div className="bg-card flex flex-col items-center gap-2 rounded-xl border px-6 py-12 text-center">
+              <SearchX className="text-teal size-8" aria-hidden />
+              <h2 className="text-lg font-semibold">No vehicles match this search</h2>
+              <p className="text-muted-foreground max-w-md text-sm">
+                Try another town, different dates or fewer filters. New providers are joining the
+                platform as we grow across the South Coast.
+              </p>
+            </div>
           ) : null}
-          {cards.map((card) => (
+          {cards.map((card, index) => (
             <VehicleCard
               key={card.id}
               card={card}
               state={state}
               reference={ref}
               highlighted={highlighted === card.id}
+              priority={index === 0}
             />
           ))}
           {nextCursor ? (

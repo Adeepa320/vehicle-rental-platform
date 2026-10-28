@@ -20,3 +20,5 @@ infra
 # Incremental build state must never enter the image: with dist excluded, a stale
 # tsbuildinfo makes tsc skip emitting files it believes are up to date.
 **/*.tsbuildinfo
+# Local demo photography (pnpm demo:seed) is never part of an image.
+apps/api/scripts/demo/photos
