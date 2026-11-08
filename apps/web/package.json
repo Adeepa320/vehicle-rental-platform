@@ -28,7 +28,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.3",
+    "@tailwindcss/postcss": "^4.3.4",
     "@types/node": "~24.19.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
@@ -37,10 +37,10 @@
     "@vrp/typescript-config": "workspace:*",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.3",
-    "postcss": "^8.5.28",
-    "shadcn": "^4.21.1",
-    "tailwindcss": "^4.3.3",
+    "postcss": "^8.5.32",
+    "shadcn": "^4.23.0",
+    "tailwindcss": "^4.3.4",
     "typescript": "~6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.1.0"
   }
 }
