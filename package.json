@@ -45,8 +45,8 @@
     "legal:render": "pnpm --filter @vrp/contracts legal:render"
   },
   "devDependencies": {
-    "prettier": "^3.9.9",
-    "turbo": "^2.11.7",
+    "prettier": "^3.10.1",
+    "turbo": "^2.11.11",
     "typescript": "~6.0.3"
   }
 }
